@@ -10,6 +10,39 @@
   },
   "bootstrap": {
     "boardViewName": "AppFactory Board",
-    "phases": ["Foundation", "API Contract", "Integrations", "Hardening", "Production"]
+    "phases": [
+      "Foundation",
+      "API Contract",
+      "Integrations",
+      "Hardening",
+      "Production"
+    ]
+  },
+  "workTypeByTitlePrefix": {
+    "[Security]": "Security",
+    "[Feature]": "Feature",
+    "[Engineering]": "Engineering",
+    "[Quality]": "Quality",
+    "[Documentation]": "Documentation"
+  },
+  "issueOverrides": {
+    "2": {
+      "priority": "P0",
+      "workType": "Security",
+      "phase": "Foundation",
+      "size": "L"
+    },
+    "3": {
+      "priority": "P0",
+      "workType": "Feature",
+      "phase": "API Contract",
+      "size": "L"
+    },
+    "4": {
+      "priority": "P1",
+      "workType": "Security",
+      "phase": "Integrations",
+      "size": "L"
+    }
   }
 }
