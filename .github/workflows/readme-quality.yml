@@ -21,8 +21,8 @@ permissions:
 
 jobs:
   product-readme:
-    uses: Trigenys/appfactory/.github/workflows/reusable-readme-quality.yml@9cc02cb742926fdbe24bf412fc8065180e487ec8
+    uses: Trigenys/appfactory/.github/workflows/reusable-readme-quality.yml@b871fa0888d89a9f755b473ba973cfcf21331a2a
     with:
       manifest_path: .appfactory/readme-contract.json
       readme_path: README.md
-      appfactory_ref: 9cc02cb742926fdbe24bf412fc8065180e487ec8
+      appfactory_ref: b871fa0888d89a9f755b473ba973cfcf21331a2a
