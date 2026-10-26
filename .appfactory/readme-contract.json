@@ -71,5 +71,62 @@
   ],
   "requiredFiles": [
     "docs/THREAT_MODEL.md"
-  ]
+  ],
+  "presentation": {
+    "variant": "centered",
+    "headline": "Security events are scattered. Attacks are not.",
+    "summary": "A security intelligence platform for SaaS teams, designed to connect suspicious activity across services and turn fragmented signals into explainable incidents.",
+    "badges": [
+      {
+        "label": "Maturity",
+        "value": "Design stage",
+        "color": "orange",
+        "href": "#known-limitations"
+      },
+      {
+        "label": "Focus",
+        "value": "Threat correlation",
+        "color": "0e7490",
+        "href": "#proposed-detection-workflows"
+      },
+      {
+        "label": "Standards",
+        "value": "NIST + OWASP",
+        "color": "263238",
+        "href": "#industry-references"
+      },
+      {
+        "label": "Governance",
+        "value": "RAIDER",
+        "color": "0969da",
+        "href": "#engineering-foundation"
+      }
+    ],
+    "navigation": [
+      {
+        "label": "The problem",
+        "href": "#the-problem"
+      },
+      {
+        "label": "Architecture",
+        "href": "#security-architecture"
+      },
+      {
+        "label": "Detection",
+        "href": "#proposed-detection-workflows"
+      },
+      {
+        "label": "Roadmap",
+        "href": "#delivery-roadmap"
+      },
+      {
+        "label": "Threat model",
+        "href": "docs/THREAT_MODEL.md"
+      },
+      {
+        "label": "Backlog",
+        "href": "https://github.com/Trigenys/trigenys-aegis/issues"
+      }
+    ]
+  }
 }
