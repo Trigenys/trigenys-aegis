@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "name": "Trigenys Aegis",
+  "stage": "design",
+  "tagline": "A suspicious event is a signal; a correlated sequence is an incident that teams can actually investigate.",
+  "problem": "Independent SaaS applications produce disconnected login, permission and payment events. Without correlation, an attacker can escalate privileges and alter sensitive settings while each local log looks innocuous.",
+  "scenario": "Repeated administrative login failures are followed by a new successful session and a beneficiary change. The security layer must correlate these authenticated events, explain the supporting evidence and request human confirmation before any consequential action.",
+  "differentiation": "Multi-tenant security correlation must be deterministic, evidence-backed and privacy-aware; optional generative summaries are advisory and must never grant authorization for destructive incident responses.",
+  "architecture": "Authenticated tenant-scoped events -> schema validation -> redacted off-chain evidence storage -> deterministic correlation -> explained incident -> human-controlled notification/response -> optional batch integrity anchor.",
+  "limitations": "The current repository is only an API scaffold. No operational security collection, detection analytics, incident response, external assurance or production blockchain integration has been shipped.",
+  "capabilities": [
+    {
+      "name": "Authenticated event ingestion",
+      "description": "Provide tenant-isolated producer authentication, strict event contracts, safe normalization and replay protection.",
+      "status": "planned"
+    },
+    {
+      "name": "Deterministic detection",
+      "description": "Correlate documented multi-event patterns while retaining source evidence and policy versions.",
+      "status": "planned"
+    },
+    {
+      "name": "Incident integrity verification",
+      "description": "Use independently verifiable fingerprints of protected evidence without exposing raw logs on public chains.",
+      "status": "planned"
+    }
+  ],
+  "roadmap": [
+    {
+      "name": "Security foundation",
+      "exitCriteria": "Tenant-aware source authentication and the agreed cross-tenant threat suite pass in CI."
+    },
+    {
+      "name": "Detection MVP",
+      "exitCriteria": "Five tested detection workflows produce source-linked incidents with replay-safe inputs."
+    },
+    {
+      "name": "Evidence assurance",
+      "exitCriteria": "Independent verifier detects intentional tampering and retention policies are documented."
+    }
+  ],
+  "references": [
+    {
+      "name": "NIST Cybersecurity Framework 2.0",
+      "url": "https://www.nist.gov/cyberframework",
+      "relevance": "Guides detection and response governance."
+    },
+    {
+      "name": "OWASP API Security Top 10",
+      "url": "https://owasp.org/API-Security/editions/2023/en/0x11-t10/",
+      "relevance": "API identity, authorization, data exposure and abuse cases."
+    },
+    {
+      "name": "MITRE ATT&CK",
+      "url": "https://attack.mitre.org/",
+      "relevance": "Reference taxonomy for attacker behavior and detection scenarios."
+    }
+  ],
+  "requiredHeadings": [
+    "The problem",
+    "Security architecture",
+    "Delivery roadmap",
+    "Known limitations"
+  ],
+  "requiredTerms": [
+    "NIST",
+    "OWASP",
+    "tenant",
+    "correlation",
+    "blockchain"
+  ],
+  "requiredFiles": [
+    "docs/THREAT_MODEL.md"
+  ]
+}
