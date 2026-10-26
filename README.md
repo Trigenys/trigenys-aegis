@@ -1,12 +1,23 @@
+<!-- appfactory:hero:start -->
+<div align="center">
+
 # Trigenys Aegis
 
-> **A suspicious event is a signal. A correlated sequence is an incident.**
->
-> A policy-first security monitoring platform for independent SaaS teams, designed to convert distributed application events into explainable incidents and independently verifiable evidence.
+### Security events are scattered. Attacks are not.
 
-**Status: design / bootstrap only.** The repository currently contains an AppFactory-generated TypeScript API scaffold; threat detection, alerting and tamper-evident auditing have not shipped. No production SOC or security certification is claimed.
+**A security intelligence platform for SaaS teams, designed to connect suspicious activity across services and turn fragmented signals into explainable incidents.**
 
-[Architecture](#security-architecture) · [Detection](#proposed-detection-workflows) · [Roadmap](#delivery-roadmap) · [Threat model](docs/THREAT_MODEL.md) · [Issues](https://github.com/Trigenys/trigenys-aegis/issues)
+[![Maturity: Design stage](https://img.shields.io/badge/Maturity-Design%20stage-orange)](#known-limitations)
+[![Focus: Threat correlation](https://img.shields.io/badge/Focus-Threat%20correlation-0e7490)](#proposed-detection-workflows)
+[![Standards: NIST + OWASP](https://img.shields.io/badge/Standards-NIST%20%2B%20OWASP-263238)](#industry-references)
+[![Governance: RAIDER](https://img.shields.io/badge/Governance-RAIDER-0969da)](#engineering-foundation)
+
+[**The problem**](#the-problem) · [**Architecture**](#security-architecture) · [**Detection**](#proposed-detection-workflows) · [**Roadmap**](#delivery-roadmap) · [**Threat model**](docs/THREAT_MODEL.md) · [**Backlog**](https://github.com/Trigenys/trigenys-aegis/issues)
+
+</div>
+
+---
+<!-- appfactory:hero:end -->
 
 ## The problem
 
