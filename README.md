@@ -6,7 +6,7 @@
 
 **Status: design / bootstrap only.** The repository currently contains an AppFactory-generated TypeScript API scaffold; threat detection, alerting and tamper-evident auditing have not shipped. No production SOC or security certification is claimed.
 
-[Architecture](#security-architecture) · [Detection](#proposed-detection-workflows) · [Roadmap](#delivery-roadmap) · [Threat model](docs/THREAT_MODEL.md) · [Issues](../../issues)
+[Architecture](#security-architecture) · [Detection](#proposed-detection-workflows) · [Roadmap](#delivery-roadmap) · [Threat model](docs/THREAT_MODEL.md) · [Issues](https://github.com/Trigenys/trigenys-aegis/issues)
 
 ## The problem
 
