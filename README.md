@@ -81,6 +81,19 @@ Each rule will have controlled fixtures, false-positive considerations, timestam
 
 The design is informed by [NIST Cybersecurity Framework 2.0](https://www.nist.gov/cyberframework), [OWASP API Security Top 10](https://owasp.org/API-Security/editions/2023/en/0x11-t10/), and [MITRE ATT&CK](https://attack.mitre.org/). These are **references for design and evaluation**, not claims of certification or audited alignment.
 
+## Local demo
+
+```bash
+npm install
+npm run demo
+```
+
+`npm run demo` builds, starts Aegis in memory on `http://127.0.0.1:3000`, loads three fictional SMEs (Douala and
+Yaounde) and prints a throwaway operator token once. Open `/cockpit/login`, paste the token, and browse the
+overview, a client view and its monthly report. Nothing is persisted and no real data is involved. Set
+`AEGIS_OPERATOR_TOKEN_SHA256` beforehand to use your own token (`npm run operator:token`). The session cookie is
+`Secure`, so use a browser that accepts it on `127.0.0.1`/`localhost`, or put the demo behind TLS.
+
 ## Known limitations
 
 Aegis is at the design stage. It does not yet ship a security event collection pipeline, a functioning correlator, production monitoring, an AI analyst or blockchain proof issuance. It cannot guarantee prevention or detection of all attacks and cannot prove the original truthfulness of submitted logs.

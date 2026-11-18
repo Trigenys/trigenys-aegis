@@ -1,4 +1,5 @@
-import type { NormalizedEvent } from "../domain/event.js";
+import type { Asset, Contact, HealthSnapshot, SiteNetworkStatus, Ticket, TicketStatus, UpsertResult } from "../domain/estate.js";
+import type { EventCategory, NormalizedEvent, Severity } from "../domain/event.js";
 import type { Client, Site, StoredCredential } from "../domain/tenancy.js";
 
 /**
@@ -28,6 +29,19 @@ export interface TenancyStore {
 
 export interface EventQuery {
   readonly limit: number;
+  /** Inclusive lower bound on receivedAt (ISO instant). */
+  readonly since?: string;
+  /** Exclusive upper bound on receivedAt (ISO instant). */
+  readonly until?: string;
+  readonly categories?: readonly EventCategory[];
+}
+
+export interface EventCountQuery {
+  /** Inclusive lower bound on receivedAt. */
+  readonly since: string;
+  /** Exclusive upper bound on receivedAt. */
+  readonly until: string;
+  readonly category?: EventCategory;
 }
 
 export interface EventStore {
@@ -36,4 +50,48 @@ export interface EventStore {
   get(clientId: string, eventId: string): Promise<NormalizedEvent | null>;
   /** Most recent first by receivedAt. */
   list(clientId: string, query: EventQuery): Promise<NormalizedEvent[]>;
+  /** Number of events per severity (every severity present, zero included) in the window. */
+  countBySeverity(clientId: string, query: EventCountQuery): Promise<Record<Severity, number>>;
+}
+
+/**
+ * Estate ports. Same isolation contract as above: the client id comes first,
+ * a site referenced by a record must belong to that client (the call throws
+ * otherwise), and every upsert reports whether it created, changed or left the
+ * record as it was, so that replaying a sync is a no-op.
+ */
+export interface EstateStore {
+  upsertAsset(clientId: string, asset: Asset): Promise<UpsertResult>;
+  /** Ordered by hostname then id. */
+  listAssets(clientId: string): Promise<Asset[]>;
+  upsertSiteNetwork(clientId: string, status: SiteNetworkStatus): Promise<UpsertResult>;
+  /** Ordered by site id. */
+  listSiteNetwork(clientId: string): Promise<SiteNetworkStatus[]>;
+}
+
+export interface TicketQuery {
+  readonly status?: TicketStatus;
+  /** Inclusive lower bound on closedAt. */
+  readonly closedSince?: string;
+  /** Exclusive upper bound on closedAt. */
+  readonly closedUntil?: string;
+}
+
+export interface SupportStore {
+  upsertContact(clientId: string, contact: Contact): Promise<UpsertResult>;
+  /** Ordered by name then id. */
+  listContacts(clientId: string): Promise<Contact[]>;
+  /**
+   * Keyed by (channel, externalRef) within the client: the id given at creation
+   * is kept, later calls only change the other fields.
+   */
+  upsertTicket(clientId: string, ticket: Ticket): Promise<UpsertResult>;
+  /** Most recently opened first, then by id. */
+  listTickets(clientId: string, query?: TicketQuery): Promise<Ticket[]>;
+}
+
+export interface HealthSnapshotStore {
+  /** Inserts the snapshot unless the client already has one for that period. Returns true when inserted. */
+  putSnapshot(clientId: string, snapshot: HealthSnapshot): Promise<boolean>;
+  getSnapshot(clientId: string, period: string): Promise<HealthSnapshot | null>;
 }

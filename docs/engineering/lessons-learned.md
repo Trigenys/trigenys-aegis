@@ -27,3 +27,19 @@ Before risky work that resembles a known incident, search this file first.
   (RLS test detects a weakened policy).
 - Lesson: pick infrastructure from the product's main risk, not from the cheapest pilot setup, and write
   the alternatives down before coding.
+
+## 2026-11-18 — Cockpit login refused by a real browser while tests passed
+
+- Context and impact: the operator cockpit login form returned 403 in Chrome. Automated tests and curl
+  checks were green; found during manual browser verification before the pull request. No release affected.
+- Root cause: pages were served with `Referrer-Policy: no-referrer`, which makes Chrome send `Origin: null`
+  on same-origin form posts; the same-origin check only compared `Origin` with `Host` and refused "null".
+  Tests built request headers by hand and never reproduced what a browser actually sends.
+- Classification: test fidelity gap, near miss.
+- Resolution: `Sec-Fetch-Site` is authoritative when present (only `same-origin` passes); `Origin: null`
+  is accepted only together with `Sec-Fetch-Site: same-origin`; pages now use `Referrer-Policy: same-origin`.
+- Prevention: `test/cockpit-web-routes.test.ts` replays the exact browser header set (`Origin: null` +
+  `Sec-Fetch-Site`) and the cross-site variants; any browser-facing flow is checked once in a real browser
+  before its pull request is opened.
+- Lesson: security checks on browser requests must be tested with the headers browsers really send, not
+  with headers chosen by the test author.

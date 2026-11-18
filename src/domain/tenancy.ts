@@ -15,6 +15,8 @@ export interface Site {
   readonly id: string;
   readonly clientId: string;
   readonly name: string;
+  /** Optional, display only. Absent and null both mean "not provided". */
+  readonly city?: string | null;
   readonly createdAt: string;
 }
 

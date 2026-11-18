@@ -27,6 +27,9 @@ approved response / notification adapter
 | Automated response misfiring | Default to notifications, require explicit opt-in and human approval for destructive operations |
 | Alert fatigue / intentionally crafted false positives | Rule references, thresholds, measurable precision and human review |
 | Compromised integration or replayed webhook | Credential rotation, signed/replay-safe messages, source identity validation |
+| Contact personal data (names, phones, emails) read across clients or leaked in logs | Stored under forced row-level security like all client data; never logged; shown only in the authenticated cockpit |
+| Operator session theft or CSRF on the cockpit | Opaque 256-bit id stored hashed, `__Host-` `HttpOnly` `Secure` `SameSite=Strict` cookie, 8 h lifetime, same-origin check on `POST`, `no-store` (ADR 0002) |
+| Stored XSS through ticket titles, client or host names | Every interpolation escaped by default, no script and no inline style, CSP `default-src 'none'; style-src 'self'` |
 
 ## Security invariants
 
