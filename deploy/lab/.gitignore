@@ -1,0 +1,4 @@
+# Secrets du labo
+.env
+# Configuration Wazuh récupérée et certificats générés par setup.sh
+wazuh/
