@@ -20,7 +20,7 @@ The initial blueprint ships only a health endpoint. Product-specific capabilitie
 - runtime: Node.js 24
 - language: TypeScript
 - HTTP: native Node server for a dependency-light bootstrap
-- persistence: intentionally unspecified
+- persistence: PostgreSQL with row-level security ([ADR 0001](adr/0001-postgresql-row-level-security.md)); in-memory without configuration
 - hosting: intentionally unspecified
 - secrets: runtime/environment-specific, never committed
 
@@ -50,7 +50,7 @@ another client's event answers 404)
 - `src/ports`: `TenancyStore`, `EventStore`; no unscoped query exists.
 - `src/adapters/sources`: `SourceAdapter` contract, registry, `WazuhAdapter` (rule level 0-3 info, 4-6 low, 7-11 medium, 12-14 high, 15 critical; `full_log` and `data` dropped).
 - `src/adapters/persistence/memory.ts`: volatile in-memory stores (tests, local trials).
-- `src/adapters/persistence/sqlite.ts`: durable stores on Node's built-in SQLite (see Durable storage).
+- `src/adapters/persistence/postgres.ts`: durable stores on PostgreSQL with row-level security (see Durable storage).
 - A client's identity is never read from the payload; tokens are 256-bit random values stored as SHA-256 hashes only.
 
 ### Operator API
@@ -73,20 +73,34 @@ Not yet covered: operator audit log, per-operator identity and roles, rate limit
 
 ## Durable storage
 
-`AEGIS_DATABASE_PATH` points to a SQLite file (for example `/var/lib/aegis/aegis.db`); without it the
-stores are in memory and the startup log says `"persistence":"memory"`.
+`AEGIS_DATABASE_URL` (for example `postgres://aegis:***@db:5432/aegis`) selects PostgreSQL; without it the
+stores are in memory and the startup log says `"persistence":"memory"`. Decision and alternatives:
+[ADR 0001](adr/0001-postgresql-row-level-security.md).
 
-- Engine: `node:sqlite`, built into Node 24, so no runtime dependency and no database server. Chosen over
-  PostgreSQL (`pg`) for the pilot: one file fits a few clients on a small VPS. A PostgreSQL adapter can
-  later implement the same ports (`src/ports/stores.ts`) without touching the core.
-- Schema: append-only migrations tracked with `PRAGMA user_version`; reopening an up-to-date file is a
-  no-op, an older file is upgraded in a transaction, a file from a newer build is refused at startup.
-- Isolation in the schema itself: every query is scoped by `client_id`, events are keyed by
-  `(client_id, id)`, and a composite foreign key refuses a credential bound to another client's site.
-- Idempotence: client and site names are unique on a normalized key (case, accents, spacing), events are
-  inserted with `ON CONFLICT DO NOTHING`, revocation keeps the first timestamp.
-- Only token hashes are stored. Protect the file and its `-wal`/`-shm` siblings like a secret store
-  (owner-only permissions, encrypted backups); `sqlite3 aegis.db ".backup copy.db"` gives a consistent
-  online copy.
-- Contract: `test/store-contract.test.ts` runs the same suite against every adapter, plus restart and
-  schema-version tests for SQLite.
+- Driver: `pg` (node-postgres), pinned exactly. Pool size 10.
+- Role: a dedicated login role that owns the database, **not** a superuser and **without** `BYPASSRLS`.
+  The service refuses to start otherwise, because such a role would silently ignore row-level security.
+- Schema: append-only migrations in `aegis_schema_migrations`, applied under a transaction-scoped advisory
+  lock, so concurrent starts migrate once. Reopening an up-to-date database is a no-op; a database
+  migrated by a newer build is refused at startup.
+- Isolation, twice: every query is scoped by `client_id` in code, and PostgreSQL enforces it again with
+  `FORCE ROW LEVEL SECURITY` on `clients`, `sites`, `credentials` and `events`. Each statement runs in a
+  transaction that sets `app.client_id` (or `app.scope`) locally; policies only expose the rows of that
+  client. Two narrow scopes exist: `operator` may list clients, `auth` may look up a credential by hash;
+  neither can read events or write. No context means no rows.
+- Limit: the context is a session setting, so RLS protects against application bugs (a forgotten
+  `WHERE`), not against SQL injection running as the same role. All SQL is parameterized.
+- Integrity: events keyed by `(client_id, id)` and inserted with `ON CONFLICT DO NOTHING`; client and site
+  names unique on a normalized key (case, accents, spacing); a composite foreign key refuses a credential
+  bound to another client's site; only SHA-256 token hashes are stored.
+- Backups: `pg_dump --format=custom` with the service role; restore into an empty database owned by the
+  same kind of role.
+- Contract: `test/store-contract.test.ts` runs the same suite against every adapter, plus restart, RLS,
+  role-refusal, schema-version and concurrent-migration tests on PostgreSQL. Those need
+  `AEGIS_TEST_DATABASE_URL` (an admin URL; each test creates and drops its own database and role) and are
+  skipped without it:
+
+  ```bash
+  docker run -d --name aegis-pg-test -e POSTGRES_PASSWORD=admin -p 55432:5432 postgres:17-alpine
+  AEGIS_TEST_DATABASE_URL=postgres://postgres:admin@localhost:55432/postgres npm run check
+  ```

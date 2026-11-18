@@ -5,8 +5,8 @@ import { createServiceServer } from "./server.js";
 const port = Number.parseInt(process.env.PORT || "3000", 10);
 const host = process.env.HOST || "0.0.0.0";
 
-// AEGIS_DATABASE_PATH selects durable SQLite storage; without it data is volatile.
-const persistence = openPersistence(process.env.AEGIS_DATABASE_PATH);
+// AEGIS_DATABASE_URL selects durable PostgreSQL storage; without it data is volatile.
+const persistence = await openPersistence(process.env.AEGIS_DATABASE_URL);
 const operators = HashedOperatorAuthenticator.fromList(process.env.AEGIS_OPERATOR_TOKEN_SHA256);
 const server = createServiceServer({
   name: "trigenys-aegis",
@@ -28,8 +28,7 @@ server.listen(port, host, () => {
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
     server.close(() => {
-      persistence.close();
-      process.exit(0);
+      void persistence.close().finally(() => process.exit(0));
     });
   });
 }

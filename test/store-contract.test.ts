@@ -1,36 +1,37 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import test from "node:test";
+import test, { type TestContext } from "node:test";
+import pg from "pg";
 import { InMemoryEventStore, InMemoryTenancyStore } from "../src/adapters/persistence/memory.js";
-import { MIGRATIONS, openSqlitePersistence } from "../src/adapters/persistence/sqlite.js";
+import { MIGRATIONS, openPostgresPersistence } from "../src/adapters/persistence/postgres.js";
 import { createCockpit } from "../src/composition.js";
 import { EVENT_SCHEMA_VERSION, type NormalizedEvent } from "../src/domain/event.js";
 import { DomainError, type StoredCredential } from "../src/domain/tenancy.js";
 import type { EventStore, TenancyStore } from "../src/ports/stores.js";
-import { loadFixture } from "./helpers.js";
+import { createTestDatabase, loadFixture, PG_ADMIN_URL } from "./helpers.js";
 
 interface Stores {
   tenancy: TenancyStore;
   events: EventStore;
-  close(): void;
 }
 
 /** Every persistence adapter must pass the same contract. */
-const ADAPTERS: Record<string, () => Stores> = {
-  memory: () => ({ tenancy: new InMemoryTenancyStore(), events: new InMemoryEventStore(), close: () => {} }),
-  sqlite: () => {
-    const db = openSqlitePersistence(":memory:");
-    return { tenancy: db.tenancyStore, events: db.eventStore, close: db.close };
+const ADAPTERS: Record<string, (t: TestContext) => Promise<Stores>> = {
+  memory: async () => ({ tenancy: new InMemoryTenancyStore(), events: new InMemoryEventStore() }),
+  postgres: async (t) => {
+    const tdb = await createTestDatabase(t);
+    const db = await openPostgresPersistence(tdb.url);
+    tdb.defer(() => db.close());
+    return { tenancy: db.tenancyStore, events: db.eventStore };
   }
 };
+const NO_PG = PG_ADMIN_URL ? false : "AEGIS_TEST_DATABASE_URL not set: PostgreSQL integration tests skipped";
+const skipFor = (adapter: string) => (adapter === "postgres" ? NO_PG : false);
 
 const T0 = "2026-11-18T10:00:00.000Z";
 const client = (id: string, name = id) => ({ id, name, createdAt: T0 });
 const credential = (over: Partial<StoredCredential>): StoredCredential => ({
   id: "cred-1", clientId: "a", siteId: null, scopes: ["events:ingest"],
-  secretHash: "h".repeat(64), createdAt: T0, revokedAt: null, ...over
+  secretHash: "a".repeat(64), createdAt: T0, revokedAt: null, ...over
 });
 const event = (clientId: string, id: string, receivedAt: string): NormalizedEvent => ({
   schemaVersion: EVENT_SCHEMA_VERSION,
@@ -48,9 +49,8 @@ const event = (clientId: string, id: string, receivedAt: string): NormalizedEven
 const isConflict = (error: unknown) => error instanceof DomainError && error.code === "CONFLICT";
 
 for (const [name, open] of Object.entries(ADAPTERS)) {
-  test(`store contract [${name}]: clients and sites`, async (t) => {
-    const { tenancy, close } = open();
-    t.after(close);
+  test(`store contract [${name}]: clients and sites`, { skip: skipFor(name) }, async (t) => {
+    const { tenancy } = await open(t);
     await tenancy.insertClient(client("a", "Garage Martin"));
     await tenancy.insertClient(client("b", "Boulangerie"));
     await assert.rejects(tenancy.insertClient(client("c", " GARAGE  MARTÍN ")), isConflict, "name collides on nameKey");
@@ -68,9 +68,8 @@ for (const [name, open] of Object.entries(ADAPTERS)) {
     assert.deepEqual((await tenancy.listSites("a")).map((s) => s.id), ["s1"]);
   });
 
-  test(`store contract [${name}]: credentials`, async (t) => {
-    const { tenancy, close } = open();
-    t.after(close);
+  test(`store contract [${name}]: credentials`, { skip: skipFor(name) }, async (t) => {
+    const { tenancy } = await open(t);
     await tenancy.insertClient(client("a"));
     await tenancy.insertClient(client("b"));
     await tenancy.insertSite({ id: "sb", clientId: "b", name: "B1", createdAt: T0 });
@@ -80,7 +79,7 @@ for (const [name, open] of Object.entries(ADAPTERS)) {
     await tenancy.insertCredential(stored);
     assert.deepEqual(await tenancy.findCredentialByHash(stored.secretHash), stored);
     assert.equal(await tenancy.findCredentialByHash("0".repeat(64)), null);
-    await assert.rejects(tenancy.insertCredential(credential({ id: "x", secretHash: "x".repeat(64), siteId: "sb" })),
+    await assert.rejects(tenancy.insertCredential(credential({ id: "x", secretHash: "b".repeat(64), siteId: "sb" })),
       "a credential cannot be bound to another client's site");
     await assert.rejects(tenancy.insertCredential(credential({ id: "y" })), "secret hashes are unique");
     assert.equal((await tenancy.listCredentials("a")).length, 1);
@@ -94,9 +93,8 @@ for (const [name, open] of Object.entries(ADAPTERS)) {
     assert.equal(await tenancy.revokeCredential("a", "missing", T0), false);
   });
 
-  test(`store contract [${name}]: events are partitioned, idempotent and ordered`, async (t) => {
-    const { tenancy, events, close } = open();
-    t.after(close);
+  test(`store contract [${name}]: events are partitioned, idempotent and ordered`, { skip: skipFor(name) }, async (t) => {
+    const { tenancy, events } = await open(t);
     await tenancy.insertClient(client("a"));
     await tenancy.insertClient(client("b"));
     const e1 = event("a", "1".repeat(64), "2026-11-18T10:00:00.000Z");
@@ -115,12 +113,9 @@ for (const [name, open] of Object.entries(ADAPTERS)) {
   });
 }
 
-test("sqlite: data, tokens and revocations survive a restart; reopening is idempotent", async (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "aegis-sqlite-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const path = join(dir, "aegis.db");
-
-  let db = openSqlitePersistence(path);
+test("postgres: data, tokens and revocations survive a restart; reopening is idempotent", { skip: NO_PG }, async (t) => {
+  const { url } = await createTestDatabase(t);
+  let db = await openPostgresPersistence(url);
   let cockpit = createCockpit({ tenancyStore: db.tenancyStore, eventStore: db.eventStore });
   const acme = await cockpit.tenancy.createClient("Acme");
   const site = await cockpit.tenancy.createSite(acme.id, "Atelier");
@@ -130,10 +125,10 @@ test("sqlite: data, tokens and revocations survive a restart; reopening is idemp
   const principal = (await cockpit.tenancy.authenticate(kept.token))!;
   const first = await cockpit.ingestion.ingest(principal, "wazuh", loadFixture("wazuh/batch-windows-defender.json"));
   assert.ok(first.accepted > 0);
-  db.close();
+  await db.close();
 
   for (let restart = 0; restart < 2; restart++) {
-    db = openSqlitePersistence(path);
+    db = await openPostgresPersistence(url);
     assert.equal(db.schemaVersion, MIGRATIONS.length);
     cockpit = createCockpit({ tenancyStore: db.tenancyStore, eventStore: db.eventStore });
     const again = await cockpit.tenancy.authenticate(kept.token);
@@ -146,19 +141,69 @@ test("sqlite: data, tokens and revocations survive a restart; reopening is idemp
     const replay = await cockpit.ingestion.ingest(again!, "wazuh", loadFixture("wazuh/batch-windows-defender.json"));
     assert.equal(replay.accepted, 0, "replay after restart creates no duplicate");
     await assert.rejects(cockpit.tenancy.createClient("ACME"), isConflict);
-    db.close();
+    await db.close();
   }
 });
 
-test("sqlite: refuses a database written by a newer build", (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "aegis-sqlite-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const path = join(dir, "aegis.db");
-  const db = openSqlitePersistence(path);
-  db.close();
-  // Simulate a future schema version.
-  const raw = openSqlitePersistence(path);
-  (raw.tenancyStore as unknown as { db: { exec(sql: string): void } }).db.exec(`PRAGMA user_version = ${MIGRATIONS.length + 1}`);
-  raw.close();
-  assert.throws(() => openSqlitePersistence(path), /newer than this build/);
+test("postgres: row-level security hides other clients even without a WHERE clause", { skip: NO_PG }, async (t) => {
+  const { url, defer } = await createTestDatabase(t);
+  const db = await openPostgresPersistence(url);
+  defer(() => db.close());
+  await db.tenancyStore.insertClient(client("a"));
+  await db.tenancyStore.insertClient(client("b"));
+  await db.eventStore.append("a", event("a", "1".repeat(64), T0));
+  await db.eventStore.append("b", event("b", "2".repeat(64), T0));
+  await db.tenancyStore.insertCredential(credential({ clientId: "b" }));
+
+  const raw = new pg.Client({ connectionString: url });
+  await raw.connect();
+  defer(() => raw.end());
+  const asContext = async (clientId: string, scope: string, sql: string) => {
+    await raw.query("BEGIN");
+    await raw.query("SELECT set_config('app.client_id', $1, true), set_config('app.scope', $2, true)", [clientId, scope]);
+    try {
+      return (await raw.query(sql)).rows;
+    } finally {
+      await raw.query("ROLLBACK");
+    }
+  };
+
+  assert.deepEqual((await asContext("a", "", "SELECT client_id FROM events")).map((r) => r.client_id), ["a"]);
+  assert.equal((await asContext("", "", "SELECT * FROM events")).length, 0, "no context, no rows");
+  assert.equal((await asContext("", "operator", "SELECT * FROM events")).length, 0, "operators cannot read events");
+  assert.equal((await asContext("", "auth", "SELECT * FROM events")).length, 0);
+  assert.equal((await asContext("a", "", "SELECT * FROM credentials")).length, 0);
+  assert.equal((await asContext("a", "", "SELECT * FROM clients")).length, 1);
+  assert.equal((await asContext("", "operator", "SELECT * FROM clients")).length, 2);
+  assert.equal((await asContext("a", "", "UPDATE credentials SET revoked_at = now() RETURNING id")).length, 0);
+  assert.equal((await asContext("", "auth", "UPDATE credentials SET revoked_at = now() RETURNING id")).length, 0,
+    "the auth scope is read-only");
+  await assert.rejects(
+    asContext("a", "", "INSERT INTO events (client_id, id, received_at, body) VALUES ('b', 'x', now(), '{}')"),
+    /row-level security/, "a client context cannot write into another client");
+});
+
+test("postgres: refuses a role that bypasses row-level security", { skip: NO_PG }, async () => {
+  await assert.rejects(openPostgresPersistence(PG_ADMIN_URL!), /superuser or has BYPASSRLS/);
+});
+
+test("postgres: refuses a database migrated by a newer build", { skip: NO_PG }, async (t) => {
+  const { url } = await createTestDatabase(t);
+  await (await openPostgresPersistence(url)).close();
+  const raw = new pg.Client({ connectionString: url });
+  await raw.connect();
+  await raw.query("INSERT INTO aegis_schema_migrations (version) VALUES ($1)", [MIGRATIONS.length + 1]);
+  await raw.end();
+  await assert.rejects(openPostgresPersistence(url), /newer than this build/);
+});
+
+test("postgres: concurrent starts migrate once", { skip: NO_PG }, async (t) => {
+  const { url } = await createTestDatabase(t);
+  const opened = await Promise.all([1, 2, 3].map(() => openPostgresPersistence(url, 2)));
+  await Promise.all(opened.map((db) => db.close()));
+  const raw = new pg.Client({ connectionString: url });
+  await raw.connect();
+  const { rows } = await raw.query("SELECT count(*)::int AS n FROM aegis_schema_migrations");
+  await raw.end();
+  assert.equal(rows[0].n, MIGRATIONS.length);
 });

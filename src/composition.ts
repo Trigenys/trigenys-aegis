@@ -1,5 +1,5 @@
 import { InMemoryEventStore, InMemoryTenancyStore } from "./adapters/persistence/memory.js";
-import { openSqlitePersistence } from "./adapters/persistence/sqlite.js";
+import { openPostgresPersistence } from "./adapters/persistence/postgres.js";
 import { SourceAdapterRegistry, type SourceAdapter } from "./adapters/sources/contract.js";
 import { WazuhAdapter } from "./adapters/sources/wazuh.js";
 import { IngestionService } from "./application/ingestion-service.js";
@@ -30,21 +30,27 @@ export function createCockpit(options: CockpitOptions = {}) {
 }
 
 export interface Persistence {
-  readonly kind: "memory" | "sqlite";
+  readonly kind: "memory" | "postgres";
   readonly tenancyStore: TenancyStore;
   readonly eventStore: EventStore;
-  close(): void;
+  close(): Promise<void>;
 }
 
 /**
- * Selects the store adapters from configuration: a SQLite file when a path is
- * given (durable), otherwise volatile in-memory stores (tests, local trials).
+ * Selects the store adapters from configuration: PostgreSQL when a connection
+ * string is given (durable, row-level security), otherwise volatile in-memory
+ * stores (tests, local trials).
  */
-export function openPersistence(databasePath?: string): Persistence {
-  const path = databasePath?.trim();
-  if (path) {
-    const sqlite = openSqlitePersistence(path);
-    return { kind: "sqlite", tenancyStore: sqlite.tenancyStore, eventStore: sqlite.eventStore, close: sqlite.close };
+export async function openPersistence(databaseUrl?: string): Promise<Persistence> {
+  const url = databaseUrl?.trim();
+  if (url) {
+    const postgres = await openPostgresPersistence(url);
+    return { kind: "postgres", tenancyStore: postgres.tenancyStore, eventStore: postgres.eventStore, close: postgres.close };
   }
-  return { kind: "memory", tenancyStore: new InMemoryTenancyStore(), eventStore: new InMemoryEventStore(), close: () => {} };
+  return {
+    kind: "memory",
+    tenancyStore: new InMemoryTenancyStore(),
+    eventStore: new InMemoryEventStore(),
+    close: async () => {}
+  };
 }
