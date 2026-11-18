@@ -33,7 +33,7 @@ sends by itself and that page content cannot read.
 - CSRF: `SameSite=Strict` plus an explicit check on `POST`: when an `Origin` header is present its host must equal
   the `Host` header, otherwise 403. A request without `Origin` is accepted (non-browser clients, older agents);
   `SameSite=Strict` still protects the cookie in that case.
-- Pages carry `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and a
+- Pages carry `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin` (the referrer never leaves the origin; `no-referrer` would make Chrome send `Origin: null` on the login form post) and a
   CSP of `default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none';
   base-uri 'none'`. There is no script and no inline style; the stylesheet is served from
   `/cockpit/assets/cockpit.css`.

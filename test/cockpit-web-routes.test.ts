@@ -94,7 +94,7 @@ test("cockpit web: security headers, no script and no inline style anywhere", as
     const res = await get(path, path === "/cockpit/login" ? undefined : id);
     assert.equal(res.headers.get("content-security-policy"), csp, path);
     assert.equal(res.headers.get("x-content-type-options"), "nosniff", path);
-    assert.equal(res.headers.get("referrer-policy"), "no-referrer", path);
+    assert.equal(res.headers.get("referrer-policy"), "same-origin", path);
     if (!path.endsWith(".css")) {
       assert.equal(res.headers.get("cache-control"), "no-store", path);
       const body = await res.text();
@@ -181,6 +181,20 @@ test("cockpit web: state-changing requests from another origin are refused", asy
   assert.equal(logout.status, 403);
   const same = await post("/cockpit/logout", {}, id, { origin: baseUrl });
   assert.equal(same.status, 303, "the same origin is accepted");
+});
+
+test("cockpit web: a real browser form post (Sec-Fetch-Site, Origin null) logs in; a cross-site one does not", async (t) => {
+  const { post, operator } = await web(t);
+  const browser = await post("/cockpit/login", { token: operator.token }, undefined, { origin: "null", "sec-fetch-site": "same-origin" });
+  assert.equal(browser.status, 303, "Chrome sends Origin: null on same-origin form posts under a strict referrer policy");
+  assert.notEqual(browser.headers.get("set-cookie"), null);
+  for (const site of ["cross-site", "same-site", "none"]) {
+    const refused = await post("/cockpit/login", { token: operator.token }, undefined, { origin: "null", "sec-fetch-site": site });
+    assert.equal(refused.status, 403, `Sec-Fetch-Site: ${site} is refused`);
+    assert.equal(refused.headers.get("set-cookie"), null);
+  }
+  const spoofed = await post("/cockpit/login", { token: operator.token }, undefined, { origin: "https://evil.example", "sec-fetch-site": "same-origin" });
+  assert.equal(spoofed.status, 403, "a foreign Origin is refused even with Sec-Fetch-Site: same-origin");
 });
 
 test("cockpit web: the session cookie never opens the JSON API, and the API token needs no cookie", async (t) => {

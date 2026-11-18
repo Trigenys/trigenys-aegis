@@ -31,7 +31,7 @@ const SECURITY_HEADERS = {
   "content-security-policy":
     "default-src 'none'; style-src 'self'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'",
   "x-content-type-options": "nosniff",
-  "referrer-policy": "no-referrer",
+  "referrer-policy": "same-origin",
   "cache-control": "no-store"
 } as const;
 
@@ -123,17 +123,31 @@ async function dispatch(deps: CockpitWebDeps, request: IncomingMessage, response
   throw new DomainError("NOT_FOUND", "not found");
 }
 
-/** State-changing browser requests must come from this very origin; an absent Origin (non-browser client) is allowed. */
+/**
+ * State-changing browser requests must come from this very origin. Browsers send Sec-Fetch-Site,
+ * which is authoritative when present; some send `Origin: null` on same-origin form posts, so
+ * "null" is accepted only alongside `Sec-Fetch-Site: same-origin`. A request with neither header
+ * (non-browser client) is allowed: the session cookie is SameSite=Strict anyway.
+ */
 function requireSameOrigin(request: IncomingMessage): void {
+  const refuse = (): never => {
+    throw new DomainError("FORBIDDEN", "cross-origin request refused");
+  };
+  const site = request.headers["sec-fetch-site"];
+  if (site !== undefined && site !== "same-origin") refuse();
   const origin = request.headers.origin;
   if (origin === undefined) return;
+  if (origin === "null") {
+    if (site === "same-origin") return;
+    refuse();
+  }
   let host: string | null = null;
   try {
     host = new URL(origin).host;
   } catch {
     host = null;
   }
-  if (host === null || host !== request.headers.host) throw new DomainError("FORBIDDEN", "cross-origin request refused");
+  if (host === null || host !== request.headers.host) refuse();
 }
 
 function sessionId(request: IncomingMessage): string | undefined {
