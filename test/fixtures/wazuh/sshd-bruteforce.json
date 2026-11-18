@@ -1,0 +1,36 @@
+{
+  "timestamp": "2026-11-18T02:13:44.512+0100",
+  "rule": {
+    "level": 10,
+    "description": "sshd: brute force trying to get access to the system. Non existent user.",
+    "id": "5712",
+    "mitre": {
+      "id": ["T1110"],
+      "tactic": ["Credential Access"],
+      "technique": ["Brute Force"]
+    },
+    "frequency": 8,
+    "firedtimes": 3,
+    "mail": false,
+    "groups": ["syslog", "sshd", "authentication_failures"],
+    "pci_dss": ["11.4", "10.2.4", "10.2.5"],
+    "gdpr": ["IV_35.7.d", "IV_32.2"]
+  },
+  "agent": {
+    "id": "003",
+    "name": "srv-files-01",
+    "ip": "10.10.1.20"
+  },
+  "manager": { "name": "wazuh-manager" },
+  "id": "1763428424.4428121",
+  "previous_output": "Nov 18 02:13:40 srv-files-01 sshd[2211]: Invalid user admin from 203.0.113.7 port 51234",
+  "full_log": "Nov 18 02:13:44 srv-files-01 sshd[2219]: Invalid user oracle from 203.0.113.7 port 51240",
+  "predecoder": {
+    "program_name": "sshd",
+    "timestamp": "Nov 18 02:13:44",
+    "hostname": "srv-files-01"
+  },
+  "decoder": { "parent": "sshd", "name": "sshd" },
+  "data": { "srcip": "203.0.113.7", "srcport": "51240", "srcuser": "oracle" },
+  "location": "/var/log/auth.log"
+}
