@@ -1,0 +1,32 @@
+[
+  {
+    "timestamp": "2026-11-18T08:01:02.000+0000",
+    "rule": {
+      "level": 3,
+      "description": "Windows logon success.",
+      "id": "60106",
+      "groups": ["windows", "windows_security", "authentication_success"]
+    },
+    "agent": { "id": "007", "name": "PC-COMPTA-02" },
+    "manager": { "name": "wazuh-manager" },
+    "id": "1763452862.991",
+    "decoder": { "name": "windows_eventchannel" },
+    "location": "EventChannel"
+  },
+  {
+    "timestamp": "2026-11-18T08:04:31.250+0000",
+    "rule": {
+      "level": 15,
+      "description": "Windows Defender: malware detected and not remediated.",
+      "id": "62123",
+      "mitre": { "id": ["T1204"], "tactic": ["Execution"] },
+      "groups": ["windows", "windows_defender", "virus"]
+    },
+    "agent": { "id": "007", "name": "PC-COMPTA-02", "ip": "10.10.2.45" },
+    "manager": { "name": "wazuh-manager" },
+    "id": "1763453071.1204",
+    "full_log": "Threat Name: Trojan:Win32/Example User: COMPTA\\jdoe Path: C:\\Users\\jdoe\\Downloads\\facture.exe",
+    "decoder": { "name": "windows_eventchannel" },
+    "location": "EventChannel"
+  }
+]

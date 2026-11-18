@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-11-18T09:00:00.000+0000",
+  "clientId": "__VICTIM_CLIENT_ID__",
+  "client_id": "__VICTIM_CLIENT_ID__",
+  "tenant": "__VICTIM_CLIENT_ID__",
+  "siteId": "__VICTIM_SITE_ID__",
+  "rule": {
+    "level": 12,
+    "description": "Payload claiming another client's identity.",
+    "id": "100001",
+    "groups": ["test"]
+  },
+  "agent": { "id": "001", "name": "attacker-host" },
+  "id": "spoof.1",
+  "data": { "clientId": "__VICTIM_CLIENT_ID__" },
+  "location": "test"
+}
