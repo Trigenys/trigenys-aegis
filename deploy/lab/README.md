@@ -51,21 +51,42 @@ Machines du labo sur un hôte Proxmox VE :
 
 ### Offres de serveur dédié (choix du fondateur)
 
-Prix HT par mois, relevés le 2026-11-18. La disponibilité change souvent : vérifier avant commande.
+OVHcloud et ses marques (Kimsufi, So you Start) sont écartés : pas de disponibilité dans la zone
+du fondateur et mauvaise expérience. Prix relevés le 2026-11-18 (1 € = 655,957 FCFA). Les prix
+cloud ont fortement monté en 2026 (pénurie de mémoire) : un dédié coûte désormais moins qu'un VPS
+équivalent. La disponibilité change souvent : vérifier au panier, avec une adresse au Cameroun.
 
-| Offre | CPU | RAM | Disque | Réseau | Prix HT/mois | Frais d'installation | Source |
-|---|---|---|---|---|---|---|---|
-| OVHcloud Kimsufi **KS-3** | Xeon E3-1245 v5, 4c/8t | 32 Go ECC | 2 × 480 Go SSD (option à choisir à la commande) | 500 Mbit/s | **18,99 €** | jusqu'à 18,99 € | [catalogue public OVHcloud Eco (API)](https://eu.api.ovh.com/v1/order/catalog/public/eco?ovhSubsidiary=FR), plan `24sk302` |
-| OVHcloud So you Start **SYS-1** | Xeon-E 2136, 6c/12t | 32 Go ECC | 2 × 512 Go NVMe | 1 Gbit/s | **29,99 €** | jusqu'à 29,99 € | même catalogue, plan `24sys01-v1` |
-| Hetzner **AX41** | Ryzen 5 3600, 6c/12t | 64 Go | 2 × 512 Go NVMe | 1 Gbit/s | **59,00 €** | 0 € | [hetzner.com, matrice AX](https://www.hetzner.com/dedicated-rootserver/matrix-ax/) |
+| Offre | CPU | RAM | Disque | Prix/mois | FCFA/mois | Installation | OPNsense en VM | Source |
+|---|---|---|---|---|---|---|---|---|
+| Hetzner **EX44** (dédié) | i5-13500, 14 cœurs | 64 Go | 2 × 512 Go NVMe | **59,00 € HT** | 38 701 | 0 € | Oui | [hetzner.com/ex44](https://www.hetzner.com/dedicated-rootserver/ex44/) |
+| Hetzner **AX41** (dédié) | Ryzen 5 3600, 6c/12t | 64 Go | 2 × 512 Go NVMe | 59,00 € HT | 38 701 | 0 € | Oui | [matrice AX](https://www.hetzner.com/dedicated-rootserver/matrix-ax/) |
+| Contabo **Cloud VDS M** | EPYC 7282, 8 cœurs | 32 Go | 240 Go NVMe | 68,00 € (54,40 € sur 24 mois), affiché TTC | 44 605 | 0 € | Oui (imbriquée, [KB Contabo](https://help.contabo.com/support/solutions/articles/103000271595-can-i-setup-nested-virtualization-on-my-server-)) | [contabo.com/vds](https://contabo.com/en/vds/) |
+| OneProvider Paris, Xeon D-1531 | 6c/12t (2015) | 32 Go | 2 × 256 Go SSD | 22,99 € | 15 080 | 0 € | Oui | [oneprovider.com](https://oneprovider.com/dedicated-servers/paris-france) |
+| Scaleway Dedibox Start-2-L | Xeon D-1531 | 32 Go | 2 × 250 Go SSD | ≈ 25 € HT (source tierce) | ≈ 16 400 | 1 mois | Oui | page officielle inaccessible |
+| Hostinger KVM 8 | 8 vCPU | 32 Go | 400 Go NVMe | 25,99 $ promo, puis 49,99 $ | ≈ 14 600 puis ≈ 28 100 | 0 | **Non** | [hostinger.com](https://www.hostinger.com/vps-hosting) |
+| Netcup RS 4000 G12.5 | 12 cœurs EPYC | 32 Go | 512 Go NVMe | 77,83 € (12 mois) | 51 053 | — | **Non** (SVM désactivé) | [netcup.com](https://www.netcup.com/en/server/root-server) |
 
-**Recommandation : SYS-1.** NVMe, 32 Go, 6 cœurs, datacenter en France, même fournisseur que
-le VPS actuel, pour 30 € HT par mois. KS-3 convient si le budget prime (vérifier l'option SSD,
-sinon les disques mécaniques pénalisent Wazuh). AX41 offre le double de RAM pour préparer la
-production du pilote.
+**Recommandation : Hetzner EX44.** Sans engagement ni frais d'installation, 64 Go de RAM : le labo
+et la production du pilote (PostgreSQL, cockpit) tiennent sur la même machine. Installer Proxmox,
+OPNsense en VM, et une VM Docker pour ce Compose. Vérifier au panier que l'IPv4 est incluse (la
+page la marque « optionnelle » ; sinon 1,70 €/mois).
 
-À éviter : les serveurs cloud sans virtualisation imbriquée (OPNsense ne peut pas y tourner) ; par
-exemple Hetzner Cloud CPX42 (8 vCPU, 16 Go, 59,49 € HT/mois) ne couvre que la partie conteneurs.
+**Plan B : Contabo Cloud VDS M** si la vérification d'identité Hetzner bloque (fréquent pour les
+comptes ouverts depuis l'Afrique). Virtualisation imbriquée confirmée, paiement PayPal accepté.
+
+À éviter : les VPS sans virtualisation imbriquée (Hostinger, Netcup, Hetzner Cloud), où OPNsense ne
+peut pas tourner, et les prix promotionnels qui doublent au renouvellement.
+
+### Sauvegardes hébergées au Cameroun
+
+Le contrat type exige que les sauvegardes des clients restent au Cameroun.
+
+| Fournisseur | Offre | Prix | Point d'attention | Source |
+|---|---|---|---|---|
+| Camtel (data center Tier III) | Data Backups | 10 000 FCFA les 100 Go/mois | Débit de 1 à 4 Mbit/s : amorcer la première sauvegarde, puis incrémental (restic) | [hosting.camtel.cm](https://hosting.camtel.cm/) |
+| VSPTECH (Douala, Yaoundé) | VPS Stockage & Backup, 256 Go à 3 To | Sur devis | Paiement Orange Money et MTN MoMo ; ses VPS sont en Europe : exiger la localisation au Cameroun par écrit | [vsptech.host](https://vsptech.host/) |
+
+Demander les deux devis ; ne signer qu'avec la localisation au Cameroun écrite dans le contrat.
 
 ## 2. Installation
 
