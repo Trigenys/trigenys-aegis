@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { generateToken, hashToken, isWellFormedToken } from "../domain/credentials.js";
 import {
-  DomainError,
-  type Client, type CredentialScope, type Principal, type Site
+  CREDENTIAL_SCOPES, DomainError,
+  type Client, type CredentialScope, type Principal, type Site, type StoredCredential
 } from "../domain/tenancy.js";
 import type { TenancyStore } from "../ports/stores.js";
 
@@ -24,17 +24,46 @@ export class TenancyService {
     private readonly clock: Clock = systemClock
   ) {}
 
+  /** Client names are unique (case-insensitive) so a retried creation cannot create a twin. */
   async createClient(name: string): Promise<Client> {
-    const client: Client = { id: randomUUID(), name: requireName(name), createdAt: this.nowIso() };
+    const clean = requireName(name);
+    const existing = (await this.store.listClients()).find((c) => sameName(c.name, clean));
+    if (existing) throw new DomainError("CONFLICT", `client "${existing.name}" already exists (id ${existing.id})`);
+    const client: Client = { id: randomUUID(), name: clean, createdAt: this.nowIso() };
     await this.store.insertClient(client);
     return client;
   }
 
+  async listClients(): Promise<Client[]> {
+    return (await this.store.listClients()).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  async getClient(clientId: string): Promise<Client> {
+    const client = await this.store.getClient(clientId);
+    if (!client) throw new DomainError("CLIENT_NOT_FOUND", "unknown client");
+    return client;
+  }
+
+  /** Site names are unique per client. */
   async createSite(clientId: string, name: string): Promise<Site> {
-    if (!(await this.store.getClient(clientId))) throw new DomainError("CLIENT_NOT_FOUND", "unknown client");
-    const site: Site = { id: randomUUID(), clientId, name: requireName(name), createdAt: this.nowIso() };
+    await this.getClient(clientId);
+    const clean = requireName(name);
+    const existing = (await this.store.listSites(clientId)).find((s) => sameName(s.name, clean));
+    if (existing) throw new DomainError("CONFLICT", `site "${existing.name}" already exists (id ${existing.id})`);
+    const site: Site = { id: randomUUID(), clientId, name: clean, createdAt: this.nowIso() };
     await this.store.insertSite(site);
     return site;
+  }
+
+  async listSites(clientId: string): Promise<Site[]> {
+    await this.getClient(clientId);
+    return this.store.listSites(clientId);
+  }
+
+  /** Credential metadata only: the hash is never exposed. */
+  async listCredentials(clientId: string): Promise<CredentialView[]> {
+    await this.getClient(clientId);
+    return (await this.store.listCredentials(clientId)).map(({ secretHash: _hash, ...view }) => view);
   }
 
   async issueCredential(
@@ -42,7 +71,11 @@ export class TenancyService {
     scopes: readonly CredentialScope[],
     siteId: string | null = null
   ): Promise<IssuedCredential> {
-    if (scopes.length === 0) throw new DomainError("INVALID_SCOPES", "at least one scope is required");
+    if (!Array.isArray(scopes) || scopes.length === 0
+      || !scopes.every((scope) => (CREDENTIAL_SCOPES as readonly unknown[]).includes(scope))) {
+      throw new DomainError("INVALID_SCOPES", `scopes must be a non-empty subset of ${CREDENTIAL_SCOPES.join(", ")}`);
+    }
+    if (siteId !== null && typeof siteId !== "string") throw new DomainError("SITE_NOT_FOUND", "siteId must be a string");
     if (!(await this.store.getClient(clientId))) throw new DomainError("CLIENT_NOT_FOUND", "unknown client");
     // A site-bound credential can only reference a site of the same client.
     if (siteId !== null && !(await this.store.getSite(clientId, siteId))) {
@@ -84,7 +117,14 @@ export class TenancyService {
   }
 }
 
-function requireName(name: string): string {
+export type CredentialView = Omit<StoredCredential, "secretHash">;
+
+function sameName(a: string, b: string): boolean {
+  return a.localeCompare(b, undefined, { sensitivity: "base" }) === 0;
+}
+
+function requireName(name: unknown): string {
+  if (typeof name !== "string") throw new DomainError("INVALID_NAME", "name must be a string");
   const trimmed = name.trim();
   if (trimmed.length === 0 || trimmed.length > 200) {
     throw new DomainError("INVALID_NAME", "name must be 1-200 characters");

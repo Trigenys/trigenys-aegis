@@ -18,7 +18,8 @@ export interface Site {
   readonly createdAt: string;
 }
 
-export type CredentialScope = "events:ingest" | "events:read";
+export const CREDENTIAL_SCOPES = ["events:ingest", "events:read"] as const;
+export type CredentialScope = (typeof CREDENTIAL_SCOPES)[number];
 
 /** Persisted form of a credential: the secret itself is never stored. */
 export interface StoredCredential {

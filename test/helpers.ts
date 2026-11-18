@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { once } from "node:events";
 import type { TestContext } from "node:test";
 import { createCockpit } from "../src/composition.js";
+import type { OperatorAuthenticator } from "../src/domain/operator.js";
 import { createServiceServer } from "../src/server.js";
 
 /** Tests run from dist/test; fixtures stay in the source tree. */
@@ -10,8 +11,8 @@ export function loadFixture(name: string): unknown {
   return JSON.parse(readFileSync(url, "utf8"));
 }
 
-export async function startCockpit(t: TestContext, maxBodyBytes?: number) {
-  const cockpit = createCockpit();
+export async function startCockpit(t: TestContext, maxBodyBytes?: number, operators?: OperatorAuthenticator) {
+  const cockpit = createCockpit({ operators });
   const server = createServiceServer({ name: "aegis-test", version: "0.0.0" }, { ...cockpit, maxBodyBytes });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");

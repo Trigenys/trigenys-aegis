@@ -3,6 +3,7 @@ import { SourceAdapterRegistry, type SourceAdapter } from "./adapters/sources/co
 import { WazuhAdapter } from "./adapters/sources/wazuh.js";
 import { IngestionService } from "./application/ingestion-service.js";
 import { systemClock, TenancyService, type Clock } from "./application/tenancy-service.js";
+import type { OperatorAuthenticator } from "./domain/operator.js";
 import type { EventStore, TenancyStore } from "./ports/stores.js";
 
 export const DEFAULT_SOURCE_ADAPTERS: readonly SourceAdapter[] = [new WazuhAdapter()];
@@ -12,6 +13,7 @@ export interface CockpitOptions {
   eventStore?: EventStore;
   adapters?: readonly SourceAdapter[];
   clock?: Clock;
+  operators?: OperatorAuthenticator;
 }
 
 /** Wires the core with injected adapters; defaults to the volatile in-memory stores. */
@@ -23,5 +25,5 @@ export function createCockpit(options: CockpitOptions = {}) {
     options.eventStore ?? new InMemoryEventStore(),
     clock
   );
-  return { tenancy, ingestion };
+  return { tenancy, ingestion, operators: options.operators };
 }

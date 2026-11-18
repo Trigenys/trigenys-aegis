@@ -22,6 +22,14 @@ export class InMemoryTenancyStore implements TenancyStore {
     return this.clients.get(clientId) ?? null;
   }
 
+  async listClients(): Promise<Client[]> {
+    return [...this.clients.values()];
+  }
+
+  async listCredentials(clientId: string): Promise<StoredCredential[]> {
+    return [...this.credentialsByHash.values()].filter((c) => c.clientId === clientId);
+  }
+
   async insertSite(site: Site): Promise<void> {
     const partition = this.sites.get(site.clientId);
     if (!partition) throw new Error(`client ${site.clientId} does not exist`);

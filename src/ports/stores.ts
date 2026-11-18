@@ -9,6 +9,9 @@ import type { Client, Site, StoredCredential } from "../domain/tenancy.js";
 export interface TenancyStore {
   insertClient(client: Client): Promise<void>;
   getClient(clientId: string): Promise<Client | null>;
+  /** Operator-only: the single cross-client query, never reachable from a client credential. */
+  listClients(): Promise<Client[]>;
+  listCredentials(clientId: string): Promise<StoredCredential[]>;
   insertSite(site: Site): Promise<void>;
   getSite(clientId: string, siteId: string): Promise<Site | null>;
   listSites(clientId: string): Promise<Site[]>;

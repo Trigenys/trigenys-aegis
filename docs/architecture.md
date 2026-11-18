@@ -52,4 +52,20 @@ another client's event answers 404)
 - `src/adapters/persistence/memory.ts`: volatile in-memory stores until a durable adapter is chosen.
 - A client's identity is never read from the payload; tokens are 256-bit random values stored as SHA-256 hashes only.
 
-Not yet covered: operator API to create clients/sites/tokens, durable persistence, rate limiting, timestamp windows.
+### Operator API
+
+MSP staff manage clients with a separate operator token (`Authorization: Bearer aegis_op_...`).
+Client credentials are rejected there, and operator tokens are rejected on client routes.
+
+| Route | Effect |
+| --- | --- |
+| `GET/POST /v1/operator/clients` | list / create a client (`{ "name" }`, unique, case-insensitive: 409 on retry) |
+| `GET /v1/operator/clients/{id}` | read a client |
+| `GET/POST /v1/operator/clients/{id}/sites` | list / create a site (`{ "name" }`, unique per client) |
+| `GET/POST /v1/operator/clients/{id}/credentials` | list metadata / issue a token (`{ "scopes": [...], "siteId"? }`); the token is returned once, `cache-control: no-store` |
+| `DELETE /v1/operator/clients/{id}/credentials/{credentialId}` | revoke (204, idempotent) |
+
+Configuration: `npm run operator:token` prints a new token and its SHA-256; only the hash goes in
+`AEGIS_OPERATOR_TOKEN_SHA256` (comma-separated for several operators). Without it, the operator API answers 503.
+
+Not yet covered: durable persistence, operator audit log, per-operator identity and roles, rate limiting, timestamp windows.
