@@ -1,6 +1,6 @@
 # Pilote d'informatique gérée : démo de 15 minutes
 
-Statut : v0 du 2026-11-18. Hypothèse de marché : celle posée en tête de `cibles.md` (PME francophones de 10 à 50 salariés, joignables sur site par le fondateur, WhatsApp comme canal principal). Pays, ville et prix restent à trancher ; les prix sont repris de l'offre quand elle sera validée.
+Statut : v0 du 2026-11-18. Marché : PME de 10 à 50 salariés à Douala et à Yaoundé, WhatsApp comme canal principal (voir `cibles.md`). Le prix par poste, en FCFA, est repris de l'offre quand elle sera validée.
 
 La démo se fait sur le **labo de démonstration** prévu par le comex (OPNsense, MeshCentral, Wazuh, GLPI), jamais sur l'environnement d'un client. On montre les écrans, on ne nomme pas les outils sauf si le prospect le demande.
 
@@ -9,7 +9,7 @@ La démo se fait sur le **labo de démonstration** prévu par le comex (OPNsense
 - Relire la fiche du prospect : secteur, nombre de postes, douleur repérée, note de qualification (`cibles.md`).
 - Vérifier le labo : au moins 3 postes de démonstration en ligne, dont un avec une mise à jour en retard, un avec un disque presque plein et une alerte de sécurité simulée (par exemple plusieurs échecs de connexion).
 - Préparer un ticket de démonstration ouvert depuis un téléphone, et un rapport mensuel d'exemple en PDF.
-- Couper les notifications personnelles ; avoir une connexion de secours (partage du téléphone).
+- Couper les notifications personnelles ; avoir une connexion de secours (partage du téléphone) et un ordinateur chargé, en cas de coupure d'électricité.
 
 ## Déroulé
 

@@ -1,6 +1,6 @@
 # Pilote d'informatique gérée : messages d'approche
 
-Statut : v0 du 2026-11-18. Hypothèse de marché : celle posée en tête de `cibles.md` (PME francophones de 10 à 50 salariés, joignables sur site par le fondateur, WhatsApp comme canal principal). Pays, ville et prix restent à trancher.
+Statut : v0 du 2026-11-18. Marché : PME de 10 à 50 salariés à Douala et à Yaoundé, WhatsApp comme canal principal (voir `cibles.md`). Le prix par poste reste à trancher.
 
 ## Règles
 
@@ -9,7 +9,7 @@ Statut : v0 du 2026-11-18. Hypothèse de marché : celle posée en tête de `cib
 - Personnaliser la première ligne (recommandation, secteur, événement récent). Un message non personnalisé ne part pas.
 - Ne rien promettre que le pilote n'assure pas : pas d'intervention la nuit ni le week-end, pas d'action sur leurs ordinateurs sans leur accord.
 - Une seule relance, 4 à 5 jours plus tard. Sans réponse, arrêter.
-- Champs à remplacer : `{Prénom}`, `{Recommandé par}`, `{secteur}`, `{Ville}`, `{Mon prénom}`.
+- Champs à remplacer : `{Prénom}`, `{Recommandé par}`, `{secteur}`, `{Ville}` (Douala ou Yaoundé), `{Mon prénom}`.
 
 ## WhatsApp
 
