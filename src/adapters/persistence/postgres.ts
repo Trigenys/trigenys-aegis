@@ -1,10 +1,15 @@
 import pg from "pg";
-import type { NormalizedEvent } from "../../domain/event.js";
+import type {
+  Asset, Contact, HealthPenalty, HealthSnapshot, SiteNetworkStatus, Ticket, UpsertResult
+} from "../../domain/estate.js";
+import { SEVERITIES, type NormalizedEvent, type Severity } from "../../domain/event.js";
 import {
   DomainError, nameKey,
   type Client, type CredentialScope, type Site, type StoredCredential
 } from "../../domain/tenancy.js";
-import type { EventQuery, EventStore, TenancyStore } from "../../ports/stores.js";
+import type {
+  EstateStore, EventCountQuery, EventQuery, EventStore, HealthSnapshotStore, SupportStore, TenancyStore, TicketQuery
+} from "../../ports/stores.js";
 
 /**
  * Durable adapters on PostgreSQL.
@@ -86,7 +91,93 @@ export const MIGRATIONS: readonly string[] = [
    CREATE POLICY auth_lookup ON credentials FOR SELECT
      USING (current_setting('app.scope', true) = 'auth');
    CREATE POLICY tenant ON events
-     USING (client_id = current_setting('app.client_id', true));`
+     USING (client_id = current_setting('app.client_id', true));`,
+
+  // v2: site city, client estate (assets, network, contacts, tickets) and monthly health snapshots.
+  `ALTER TABLE sites ADD COLUMN city text;
+
+   CREATE TABLE assets (
+     client_id              text COLLATE "C" NOT NULL REFERENCES clients(id),
+     id                     text COLLATE "C" NOT NULL,
+     site_id                text COLLATE "C",
+     kind                   text NOT NULL CHECK (kind IN ('workstation', 'server')),
+     hostname               text NOT NULL,
+     os                     text NOT NULL,
+     hardware               text,
+     user_name              text,
+     last_seen_at           timestamptz NOT NULL,
+     antivirus              text NOT NULL CHECK (antivirus IN ('ok', 'disabled', 'outdated', 'unknown')),
+     firewall               text NOT NULL CHECK (firewall IN ('ok', 'disabled', 'outdated', 'unknown')),
+     pending_updates        integer NOT NULL CHECK (pending_updates >= 0),
+     critical_updates       integer NOT NULL CHECK (critical_updates >= 0),
+     last_backup_success_at timestamptz,
+     backup_required        boolean NOT NULL,
+     source                 text NOT NULL,
+     observed_at            timestamptz NOT NULL,
+     PRIMARY KEY (client_id, id),
+     CONSTRAINT assets_site_same_client FOREIGN KEY (client_id, site_id) REFERENCES sites(client_id, id)
+   );
+   CREATE TABLE site_network_status (
+     client_id   text COLLATE "C" NOT NULL REFERENCES clients(id),
+     site_id     text COLLATE "C" NOT NULL,
+     box         text NOT NULL CHECK (box IN ('up', 'down', 'unknown')),
+     vpn         text NOT NULL CHECK (vpn IN ('up', 'down', 'unknown')),
+     internet    text NOT NULL CHECK (internet IN ('up', 'down', 'unknown')),
+     observed_at timestamptz NOT NULL,
+     PRIMARY KEY (client_id, site_id),
+     CONSTRAINT site_network_same_client FOREIGN KEY (client_id, site_id) REFERENCES sites(client_id, id)
+   );
+   CREATE TABLE contacts (
+     client_id text COLLATE "C" NOT NULL REFERENCES clients(id),
+     id        text COLLATE "C" NOT NULL,
+     name      text NOT NULL,
+     role      text NOT NULL,
+     phone     text,
+     email     text,
+     PRIMARY KEY (client_id, id)
+   );
+   CREATE TABLE tickets (
+     client_id    text COLLATE "C" NOT NULL REFERENCES clients(id),
+     id           text COLLATE "C" NOT NULL,
+     site_id      text COLLATE "C",
+     channel      text NOT NULL CHECK (channel IN ('whatsapp', 'web')),
+     external_ref text NOT NULL,
+     title        text NOT NULL,
+     status       text NOT NULL CHECK (status IN ('open', 'closed')),
+     opened_at    timestamptz NOT NULL,
+     closed_at    timestamptz,
+     PRIMARY KEY (client_id, id),
+     CONSTRAINT tickets_external_unique UNIQUE (client_id, channel, external_ref),
+     CONSTRAINT tickets_site_same_client FOREIGN KEY (client_id, site_id) REFERENCES sites(client_id, id)
+   );
+   CREATE INDEX tickets_by_status ON tickets(client_id, status, opened_at DESC);
+   CREATE TABLE health_snapshots (
+     client_id       text COLLATE "C" NOT NULL REFERENCES clients(id),
+     period          text NOT NULL CHECK (period ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'),
+     score           integer NOT NULL CHECK (score BETWEEN 0 AND 100),
+     band            text NOT NULL CHECK (band IN ('healthy', 'watch', 'critical')),
+     ruleset_version text NOT NULL,
+     penalties       jsonb NOT NULL,
+     computed_at     timestamptz NOT NULL,
+     PRIMARY KEY (client_id, period)
+   );
+
+   ALTER TABLE assets ENABLE ROW LEVEL SECURITY;
+   ALTER TABLE assets FORCE ROW LEVEL SECURITY;
+   ALTER TABLE site_network_status ENABLE ROW LEVEL SECURITY;
+   ALTER TABLE site_network_status FORCE ROW LEVEL SECURITY;
+   ALTER TABLE contacts ENABLE ROW LEVEL SECURITY;
+   ALTER TABLE contacts FORCE ROW LEVEL SECURITY;
+   ALTER TABLE tickets ENABLE ROW LEVEL SECURITY;
+   ALTER TABLE tickets FORCE ROW LEVEL SECURITY;
+   ALTER TABLE health_snapshots ENABLE ROW LEVEL SECURITY;
+   ALTER TABLE health_snapshots FORCE ROW LEVEL SECURITY;
+
+   CREATE POLICY tenant ON assets USING (client_id = current_setting('app.client_id', true));
+   CREATE POLICY tenant ON site_network_status USING (client_id = current_setting('app.client_id', true));
+   CREATE POLICY tenant ON contacts USING (client_id = current_setting('app.client_id', true));
+   CREATE POLICY tenant ON tickets USING (client_id = current_setting('app.client_id', true));
+   CREATE POLICY tenant ON health_snapshots USING (client_id = current_setting('app.client_id', true));`
 ];
 
 const MIGRATION_LOCK = 0x4165_6769; // "Aegi": serializes concurrent migrators.
@@ -97,6 +188,9 @@ type Row = Record<string, unknown>;
 export interface PostgresPersistence {
   readonly tenancyStore: PostgresTenancyStore;
   readonly eventStore: PostgresEventStore;
+  readonly estateStore: PostgresEstateStore;
+  readonly supportStore: PostgresSupportStore;
+  readonly snapshotStore: PostgresSnapshotStore;
   readonly schemaVersion: number;
   close(): Promise<void>;
 }
@@ -116,6 +210,9 @@ export async function openPostgresPersistence(connectionString: string, poolSize
     return {
       tenancyStore: new PostgresTenancyStore(db),
       eventStore: new PostgresEventStore(db),
+      estateStore: new PostgresEstateStore(db),
+      supportStore: new PostgresSupportStore(db),
+      snapshotStore: new PostgresSnapshotStore(db),
       schemaVersion,
       close: () => pool.end()
     };
@@ -228,8 +325,8 @@ export class PostgresTenancyStore implements TenancyStore {
   async insertSite(site: Site): Promise<void> {
     try {
       await this.db.query({ clientId: site.clientId },
-        "INSERT INTO sites (id, client_id, name, name_key, created_at) VALUES ($1, $2, $3, $4, $5)",
-        [site.id, site.clientId, site.name, nameKey(site.name), site.createdAt]);
+        "INSERT INTO sites (id, client_id, name, name_key, city, created_at) VALUES ($1, $2, $3, $4, $5, $6)",
+        [site.id, site.clientId, site.name, nameKey(site.name), site.city ?? null, site.createdAt]);
     } catch (error) {
       if (isUniqueViolation(error, "sites_name_unique")) {
         throw new DomainError("CONFLICT", "a site with this name already exists for this client");
@@ -240,13 +337,13 @@ export class PostgresTenancyStore implements TenancyStore {
 
   async getSite(clientId: string, siteId: string): Promise<Site | null> {
     const { rows } = await this.db.query({ clientId },
-      "SELECT id, client_id, name, created_at FROM sites WHERE client_id = $1 AND id = $2", [clientId, siteId]);
+      "SELECT id, client_id, name, city, created_at FROM sites WHERE client_id = $1 AND id = $2", [clientId, siteId]);
     return rows[0] ? toSite(rows[0]) : null;
   }
 
   async listSites(clientId: string): Promise<Site[]> {
     const { rows } = await this.db.query({ clientId },
-      "SELECT id, client_id, name, created_at FROM sites WHERE client_id = $1 ORDER BY created_at, id", [clientId]);
+      "SELECT id, client_id, name, city, created_at FROM sites WHERE client_id = $1 ORDER BY created_at, id", [clientId]);
     return rows.map(toSite);
   }
 
@@ -290,13 +387,178 @@ export class PostgresEventStore implements EventStore {
   }
 
   async list(clientId: string, query: EventQuery): Promise<NormalizedEvent[]> {
+    const params: unknown[] = [clientId];
+    const filters = ["client_id = $1"];
+    if (query.since !== undefined) filters.push(`received_at >= $${params.push(query.since)}`);
+    if (query.until !== undefined) filters.push(`received_at < $${params.push(query.until)}`);
+    if (query.categories !== undefined) filters.push(`body->>'category' = ANY($${params.push([...query.categories])}::text[])`);
+    const limit = `$${params.push(query.limit)}`;
     const { rows } = await this.db.query({ clientId },
-      "SELECT body FROM events WHERE client_id = $1 ORDER BY received_at DESC, id ASC LIMIT $2",
-      [clientId, query.limit]);
+      `SELECT body FROM events WHERE ${filters.join(" AND ")} ORDER BY received_at DESC, id ASC LIMIT ${limit}`,
+      params);
     return rows.map((row) => row.body as NormalizedEvent);
+  }
+
+  async countBySeverity(clientId: string, query: EventCountQuery): Promise<Record<Severity, number>> {
+    const params: unknown[] = [clientId, query.since, query.until];
+    const filters = ["client_id = $1", "received_at >= $2", "received_at < $3"];
+    if (query.category !== undefined) filters.push(`body->>'category' = $${params.push(query.category)}`);
+    const { rows } = await this.db.query({ clientId },
+      `SELECT body->>'severity' AS severity, count(*)::int AS n FROM events WHERE ${filters.join(" AND ")} GROUP BY 1`,
+      params);
+    const counts = Object.fromEntries(SEVERITIES.map((severity) => [severity, 0])) as Record<Severity, number>;
+    for (const row of rows) counts[row.severity as Severity] = Number(row.n);
+    return counts;
   }
 }
 
+/**
+ * Idempotent upsert: the WHERE clause skips the write when the stored row is
+ * identical, so an unchanged record reports rowCount 0 and costs no new tuple.
+ * `xmax = 0` is true only for a row inserted by this very statement.
+ */
+function outcome(result: pg.QueryResult<Row>): UpsertResult {
+  if ((result.rowCount ?? 0) === 0) return "unchanged";
+  return result.rows[0]?.inserted === true ? "created" : "updated";
+}
+
+export class PostgresEstateStore implements EstateStore {
+  constructor(private readonly db: Db) {}
+
+  async upsertAsset(clientId: string, asset: Asset): Promise<UpsertResult> {
+    requireSameClient(clientId, asset.clientId);
+    return outcome(await this.db.query({ clientId },
+      `INSERT INTO assets AS t (${ASSET_COLUMNS})
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+       ON CONFLICT (client_id, id) DO UPDATE SET ${assignments(ASSET_COLUMNS, 2)}
+       WHERE (t.*) IS DISTINCT FROM (EXCLUDED.*)
+       RETURNING (xmax = 0) AS inserted`,
+      [asset.clientId, asset.id, asset.siteId, asset.kind, asset.hostname, asset.os, asset.hardware, asset.user,
+        asset.lastSeenAt, asset.antivirus, asset.firewall, asset.pendingUpdates, asset.criticalUpdates,
+        asset.lastBackupSuccessAt, asset.backupRequired, asset.source, asset.observedAt]));
+  }
+
+  async listAssets(clientId: string): Promise<Asset[]> {
+    const { rows } = await this.db.query({ clientId },
+      `SELECT ${ASSET_COLUMNS} FROM assets WHERE client_id = $1 ORDER BY hostname COLLATE "C", id`, [clientId]);
+    return rows.map(toAsset);
+  }
+
+  async upsertSiteNetwork(clientId: string, status: SiteNetworkStatus): Promise<UpsertResult> {
+    requireSameClient(clientId, status.clientId);
+    return outcome(await this.db.query({ clientId },
+      `INSERT INTO site_network_status AS t (${NETWORK_COLUMNS}) VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (client_id, site_id) DO UPDATE SET ${assignments(NETWORK_COLUMNS, 2)}
+       WHERE (t.*) IS DISTINCT FROM (EXCLUDED.*)
+       RETURNING (xmax = 0) AS inserted`,
+      [status.clientId, status.siteId, status.box, status.vpn, status.internet, status.observedAt]));
+  }
+
+  async listSiteNetwork(clientId: string): Promise<SiteNetworkStatus[]> {
+    const { rows } = await this.db.query({ clientId },
+      `SELECT ${NETWORK_COLUMNS} FROM site_network_status WHERE client_id = $1 ORDER BY site_id`, [clientId]);
+    return rows.map((row) => ({
+      clientId: row.client_id as string, siteId: row.site_id as string,
+      box: row.box as SiteNetworkStatus["box"], vpn: row.vpn as SiteNetworkStatus["vpn"],
+      internet: row.internet as SiteNetworkStatus["internet"], observedAt: iso(row.observed_at)
+    }));
+  }
+}
+
+export class PostgresSupportStore implements SupportStore {
+  constructor(private readonly db: Db) {}
+
+  async upsertContact(clientId: string, contact: Contact): Promise<UpsertResult> {
+    requireSameClient(clientId, contact.clientId);
+    return outcome(await this.db.query({ clientId },
+      `INSERT INTO contacts AS t (${CONTACT_COLUMNS}) VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (client_id, id) DO UPDATE SET ${assignments(CONTACT_COLUMNS, 2)}
+       WHERE (t.*) IS DISTINCT FROM (EXCLUDED.*)
+       RETURNING (xmax = 0) AS inserted`,
+      [contact.clientId, contact.id, contact.name, contact.role, contact.phone, contact.email]));
+  }
+
+  async listContacts(clientId: string): Promise<Contact[]> {
+    const { rows } = await this.db.query({ clientId },
+      `SELECT ${CONTACT_COLUMNS} FROM contacts WHERE client_id = $1 ORDER BY name COLLATE "C", id`, [clientId]);
+    return rows.map((row) => ({
+      id: row.id as string, clientId: row.client_id as string, name: row.name as string, role: row.role as string,
+      phone: (row.phone as string | null) ?? null, email: (row.email as string | null) ?? null
+    }));
+  }
+
+  async upsertTicket(clientId: string, ticket: Ticket): Promise<UpsertResult> {
+    requireSameClient(clientId, ticket.clientId);
+    // The id is not updated and not compared: (channel, external_ref) is the idempotency key.
+    return outcome(await this.db.query({ clientId },
+      `INSERT INTO tickets AS t (${TICKET_COLUMNS}) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (client_id, channel, external_ref) DO UPDATE
+         SET site_id = EXCLUDED.site_id, title = EXCLUDED.title, status = EXCLUDED.status,
+             opened_at = EXCLUDED.opened_at, closed_at = EXCLUDED.closed_at
+       WHERE (t.site_id, t.title, t.status, t.opened_at, t.closed_at)
+         IS DISTINCT FROM (EXCLUDED.site_id, EXCLUDED.title, EXCLUDED.status, EXCLUDED.opened_at, EXCLUDED.closed_at)
+       RETURNING (xmax = 0) AS inserted`,
+      [ticket.clientId, ticket.id, ticket.siteId, ticket.channel, ticket.externalRef, ticket.title, ticket.status,
+        ticket.openedAt, ticket.closedAt]));
+  }
+
+  async listTickets(clientId: string, query: TicketQuery = {}): Promise<Ticket[]> {
+    const params: unknown[] = [clientId];
+    const filters = ["client_id = $1"];
+    if (query.status !== undefined) filters.push(`status = $${params.push(query.status)}`);
+    if (query.closedSince !== undefined) filters.push(`closed_at >= $${params.push(query.closedSince)}`);
+    if (query.closedUntil !== undefined) filters.push(`closed_at < $${params.push(query.closedUntil)}`);
+    const { rows } = await this.db.query({ clientId },
+      `SELECT ${TICKET_COLUMNS} FROM tickets WHERE ${filters.join(" AND ")} ORDER BY opened_at DESC, id`, params);
+    return rows.map((row) => ({
+      id: row.id as string, clientId: row.client_id as string, siteId: (row.site_id as string | null) ?? null,
+      channel: row.channel as Ticket["channel"], externalRef: row.external_ref as string, title: row.title as string,
+      status: row.status as Ticket["status"], openedAt: iso(row.opened_at),
+      closedAt: row.closed_at === null ? null : iso(row.closed_at)
+    }));
+  }
+}
+
+export class PostgresSnapshotStore implements HealthSnapshotStore {
+  constructor(private readonly db: Db) {}
+
+  async putSnapshot(clientId: string, snapshot: HealthSnapshot): Promise<boolean> {
+    requireSameClient(clientId, snapshot.clientId);
+    const result = await this.db.query({ clientId },
+      `INSERT INTO health_snapshots (${SNAPSHOT_COLUMNS}) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+       ON CONFLICT (client_id, period) DO NOTHING`,
+      [snapshot.clientId, snapshot.period, snapshot.score, snapshot.band, snapshot.rulesetVersion,
+        JSON.stringify(snapshot.penalties), snapshot.computedAt]);
+    return result.rowCount === 1;
+  }
+
+  async getSnapshot(clientId: string, period: string): Promise<HealthSnapshot | null> {
+    const { rows } = await this.db.query({ clientId },
+      `SELECT ${SNAPSHOT_COLUMNS} FROM health_snapshots WHERE client_id = $1 AND period = $2`, [clientId, period]);
+    const row = rows[0];
+    return row ? {
+      clientId: row.client_id as string, period: row.period as string, score: Number(row.score),
+      band: row.band as HealthSnapshot["band"], rulesetVersion: row.ruleset_version as string,
+      penalties: row.penalties as HealthPenalty[], computedAt: iso(row.computed_at)
+    } : null;
+  }
+}
+
+function requireSameClient(clientId: string, recordClientId: string): void {
+  if (clientId !== recordClientId) throw new Error("record clientId does not match partition");
+}
+
+/** `col = EXCLUDED.col` for every column after the first `skip` key columns. */
+function assignments(columns: string, skip: number): string {
+  return columns.split(", ").slice(skip).map((column) => `${column} = EXCLUDED.${column}`).join(", ");
+}
+
+const ASSET_COLUMNS = "client_id, id, site_id, kind, hostname, os, hardware, user_name, last_seen_at, antivirus, "
+  + "firewall, pending_updates, critical_updates, last_backup_success_at, backup_required, source, observed_at";
+const NETWORK_COLUMNS = "client_id, site_id, box, vpn, internet, observed_at";
+const CONTACT_COLUMNS = "client_id, id, name, role, phone, email";
+const TICKET_COLUMNS = "client_id, id, site_id, channel, external_ref, title, status, opened_at, closed_at";
+const SNAPSHOT_COLUMNS = "client_id, period, score, band, ruleset_version, penalties, computed_at";
 const CREDENTIAL_COLUMNS = "id, client_id, site_id, scopes, secret_hash, created_at, revoked_at";
 
 const iso = (value: unknown): string => (value as Date).toISOString();
@@ -306,7 +568,31 @@ function toClient(row: Row): Client {
 }
 
 function toSite(row: Row): Site {
-  return { id: row.id as string, clientId: row.client_id as string, name: row.name as string, createdAt: iso(row.created_at) };
+  const site = { id: row.id as string, clientId: row.client_id as string, name: row.name as string, createdAt: iso(row.created_at) };
+  return row.city === null ? site : { ...site, city: row.city as string };
+}
+
+function toAsset(row: Row): Asset {
+  const nullableIso = (value: unknown) => (value === null ? null : iso(value));
+  return {
+    id: row.id as string,
+    clientId: row.client_id as string,
+    siteId: (row.site_id as string | null) ?? null,
+    kind: row.kind as Asset["kind"],
+    hostname: row.hostname as string,
+    os: row.os as string,
+    hardware: (row.hardware as string | null) ?? null,
+    user: (row.user_name as string | null) ?? null,
+    lastSeenAt: iso(row.last_seen_at),
+    antivirus: row.antivirus as Asset["antivirus"],
+    firewall: row.firewall as Asset["firewall"],
+    pendingUpdates: Number(row.pending_updates),
+    criticalUpdates: Number(row.critical_updates),
+    lastBackupSuccessAt: nullableIso(row.last_backup_success_at),
+    backupRequired: row.backup_required as boolean,
+    source: row.source as string,
+    observedAt: iso(row.observed_at)
+  };
 }
 
 function toCredential(row: Row): StoredCredential {

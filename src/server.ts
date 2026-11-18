@@ -1,8 +1,13 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import type { CockpitReadService } from "./application/cockpit-service.js";
 import type { IngestionService } from "./application/ingestion-service.js";
-import type { TenancyService } from "./application/tenancy-service.js";
+import { systemClock, type Clock, type TenancyService } from "./application/tenancy-service.js";
 import type { OperatorAuthenticator } from "./domain/operator.js";
 import { DomainError, type Principal } from "./domain/tenancy.js";
+import { DEFAULT_MAX_BODY, readJson, readObject, sendJson } from "./http/body.js";
+import { ERROR_STATUS } from "./http/errors.js";
+import { requireOperator } from "./http/operator-auth.js";
+import { matchOperatorCockpit, routeOperatorCockpit, UUID } from "./http/operator-cockpit-routes.js";
 
 export interface ServiceInfo {
   name: string;
@@ -15,38 +20,18 @@ export interface ServiceDependencies {
   ingestion: IngestionService;
   /** Operator (MSP staff) authentication; when absent or empty the operator API answers 503. */
   operators?: OperatorAuthenticator;
+  /** Read models for the cockpit; without them the cockpit API and pages are not served. */
+  cockpit?: CockpitReadService;
+  clock?: Clock;
   /** Maximum accepted request body, in bytes. Defaults to 1 MiB. */
   maxBodyBytes?: number;
 }
 
-const DEFAULT_MAX_BODY = 1024 * 1024;
 const INGEST_ROUTE = /^\/v1\/sources\/([a-z][a-z0-9-]{1,31})\/events$/;
 const EVENT_ROUTE = /^\/v1\/events\/([a-f0-9]{64})$/;
-const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const OPERATOR_ROUTE = new RegExp(
   `^/v1/operator/clients(?:/(${UUID})(?:/(sites|credentials)(?:/(${UUID}))?)?)?$`
 );
-
-const ERROR_STATUS: Record<string, number> = {
-  UNAUTHORIZED: 401,
-  CONFLICT: 409,
-  CLIENT_NOT_FOUND: 404,
-  CREDENTIAL_NOT_FOUND: 404,
-  SITE_NOT_FOUND: 422,
-  INVALID_NAME: 422,
-  INVALID_SCOPES: 422,
-  INVALID_BODY: 422,
-  METHOD_NOT_ALLOWED: 405,
-  OPERATOR_API_DISABLED: 503,
-  FORBIDDEN: 403,
-  NOT_FOUND: 404,
-  UNKNOWN_SOURCE: 404,
-  PAYLOAD_TOO_LARGE: 413,
-  UNSUPPORTED_MEDIA_TYPE: 415,
-  INVALID_JSON: 400,
-  INVALID_PAYLOAD: 422,
-  INVALID_EVENT: 422
-};
 
 export function createServiceServer(info: ServiceInfo, deps?: ServiceDependencies) {
   return createServer((request: IncomingMessage, response: ServerResponse) => {
@@ -73,6 +58,15 @@ async function route(
   if (request.method === "GET" && url.pathname === "/health") {
     sendJson(response, 200, { status: "ok", service: info.name, version: info.version });
     return;
+  }
+
+  if (deps?.cockpit && url.pathname.startsWith("/v1/operator/")) {
+    const cockpitMatch = matchOperatorCockpit(url.pathname);
+    if (cockpitMatch) {
+      await routeOperatorCockpit({ ...deps, cockpit: deps.cockpit, clock: deps.clock ?? systemClock },
+        request, response, url, cockpitMatch);
+      return;
+    }
   }
 
   if (deps && url.pathname.startsWith("/v1/operator/")) {
@@ -125,14 +119,7 @@ async function routeOperator(
   response: ServerResponse,
   [, clientId, collection, itemId]: RegExpExecArray
 ): Promise<void> {
-  if (!deps.operators?.enabled) {
-    throw new DomainError("OPERATOR_API_DISABLED", "no operator credential is configured");
-  }
-  const header = request.headers.authorization ?? "";
-  const match = /^Bearer (\S+)$/.exec(header);
-  if (!match || !deps.operators.verify(match[1]!)) {
-    throw new DomainError("UNAUTHORIZED", "missing or invalid operator credential");
-  }
+  requireOperator(deps.operators, request);
 
   const { tenancy } = deps;
   const method = request.method ?? "GET";
@@ -150,7 +137,7 @@ async function routeOperator(
     if (method === "GET") return sendJson(response, 200, { sites: await tenancy.listSites(clientId) });
     if (method === "POST") {
       const body = await readObject(request, maxBody);
-      return sendJson(response, 201, await tenancy.createSite(clientId, body.name as string));
+      return sendJson(response, 201, await tenancy.createSite(clientId, body.name as string, body.city));
     }
   } else if (collection === "credentials" && !itemId) {
     if (method === "GET") return sendJson(response, 200, { credentials: await tenancy.listCredentials(clientId) });
@@ -179,45 +166,10 @@ async function routeOperator(
   throw new DomainError("METHOD_NOT_ALLOWED", `${method} is not allowed here`);
 }
 
-async function readObject(request: IncomingMessage, maxBytes: number): Promise<Record<string, unknown>> {
-  const body = await readJson(request, maxBytes);
-  if (typeof body !== "object" || body === null || Array.isArray(body)) {
-    throw new DomainError("INVALID_BODY", "body must be a JSON object");
-  }
-  return body as Record<string, unknown>;
-}
-
 async function authenticate(deps: ServiceDependencies, request: IncomingMessage): Promise<Principal> {
   const header = request.headers.authorization ?? "";
   const match = /^Bearer (\S+)$/.exec(header);
   const principal = match ? await deps.tenancy.authenticate(match[1]!) : null;
   if (!principal) throw new DomainError("UNAUTHORIZED", "missing or invalid credential");
   return principal;
-}
-
-async function readJson(request: IncomingMessage, maxBytes: number): Promise<unknown> {
-  const contentType = request.headers["content-type"] ?? "";
-  if (!/^application\/json\b/i.test(contentType)) {
-    throw new DomainError("UNSUPPORTED_MEDIA_TYPE", "content-type must be application/json");
-  }
-  const declared = Number(request.headers["content-length"] ?? "0");
-  if (declared > maxBytes) throw new DomainError("PAYLOAD_TOO_LARGE", `body exceeds ${maxBytes} bytes`);
-
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of request) {
-    size += (chunk as Buffer).length;
-    if (size > maxBytes) throw new DomainError("PAYLOAD_TOO_LARGE", `body exceeds ${maxBytes} bytes`);
-    chunks.push(chunk as Buffer);
-  }
-  try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  } catch {
-    throw new DomainError("INVALID_JSON", "body is not valid JSON");
-  }
-}
-
-function sendJson(response: ServerResponse, status: number, body: unknown): void {
-  response.writeHead(status, { "content-type": "application/json; charset=utf-8" });
-  response.end(JSON.stringify(body));
 }

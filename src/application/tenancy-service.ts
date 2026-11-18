@@ -47,13 +47,17 @@ export class TenancyService {
     return client;
   }
 
-  /** Site names are unique per client. */
-  async createSite(clientId: string, name: string): Promise<Site> {
+  /** Site names are unique per client. The city is optional free text. */
+  async createSite(clientId: string, name: string, city?: unknown): Promise<Site> {
     await this.getClient(clientId);
     const clean = requireName(name);
     const existing = (await this.store.listSites(clientId)).find((s) => nameKey(s.name) === nameKey(clean));
     if (existing) throw new DomainError("CONFLICT", `site "${existing.name}" already exists (id ${existing.id})`);
-    const site: Site = { id: randomUUID(), clientId, name: clean, createdAt: this.nowIso() };
+    const cleanCity = requireCity(city);
+    const site: Site = {
+      id: randomUUID(), clientId, name: clean, createdAt: this.nowIso(),
+      ...(cleanCity === null ? {} : { city: cleanCity })
+    };
     await this.store.insertSite(site);
     return site;
   }
@@ -129,4 +133,12 @@ function requireName(name: unknown): string {
     throw new DomainError("INVALID_NAME", "name must be 1-200 characters");
   }
   return trimmed;
+}
+
+function requireCity(city: unknown): string | null {
+  if (city === undefined || city === null) return null;
+  if (typeof city !== "string") throw new DomainError("INVALID_NAME", "city must be a string");
+  const trimmed = city.trim();
+  if (trimmed.length > 200) throw new DomainError("INVALID_NAME", "city must be at most 200 characters");
+  return trimmed === "" ? null : trimmed;
 }
