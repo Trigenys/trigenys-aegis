@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 /**
  * Client estate model: what the cockpit knows about a client's machines,
  * network, contacts and support tickets. Every record belongs to exactly one
@@ -92,3 +94,13 @@ export interface HealthSnapshot {
 }
 
 export type UpsertResult = "created" | "updated" | "unchanged";
+
+/**
+ * Deterministic record id for something reported by an external source:
+ * replaying the same source record for the same client yields the same id,
+ * while identical source ids from two clients never collide. Shared by events
+ * and inventory so both keep stable, client-scoped identifiers.
+ */
+export function sourceRecordId(clientId: string, source: string, externalId: string): string {
+  return createHash("sha256").update(JSON.stringify([clientId, source, externalId])).digest("hex");
+}

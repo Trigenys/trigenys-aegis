@@ -30,6 +30,7 @@ approved response / notification adapter
 | Contact personal data (names, phones, emails) read across clients or leaked in logs | Stored under forced row-level security like all client data; never logged; shown only in the authenticated cockpit |
 | Operator session theft or CSRF on the cockpit | Opaque 256-bit id stored hashed, `__Host-` `HttpOnly` `Secure` `SameSite=Strict` cookie, 8 h lifetime, same-origin check on `POST`, `no-store` (ADR 0002) |
 | Stored XSS through ticket titles, client or host names | Every interpolation escaped by default, no script and no inline style, CSP `default-src 'none'; style-src 'self'` |
+| Tactical RMM API key leaked or over-privileged, or RMM data written into the wrong client | Key only in an environment variable (a key in the config file is refused), never logged or reported (sentinel test); read-only key restricted to pilot clients; client taken from the configuration, whole client refused when RMM names disagree (ADR 0003) |
 
 ## Security invariants
 
