@@ -71,6 +71,48 @@ Configuration: `npm run operator:token` prints a new token and its SHA-256; only
 
 Not yet covered: operator audit log, per-operator identity and roles, rate limiting, timestamp windows.
 
+### Cockpit web
+
+Server-rendered HTML with no JavaScript, served by the same process as the API (`src/http/`).
+
+| Route | Effect |
+| --- | --- |
+| `GET /cockpit/login`, `POST /cockpit/login` | form; a valid operator token opens a session cookie (303 to `/cockpit`), a wrong one answers 401 with no cookie |
+| `POST /cockpit/logout` | destroys the session server-side and clears the cookie |
+| `GET /cockpit` | overview of every client, weakest first |
+| `GET /cockpit/clients/{id}` | client view: score and its explanation, estate, alerts, tickets |
+| `GET /cockpit/clients/{id}/report?period=YYYY-MM` | printable monthly report |
+| `GET /cockpit/assets/cockpit.css` | stylesheet (public, light/dark, print) |
+
+Without a session every page answers 303 to the login. Session, cookie and CSRF design: [ADR 0002](adr/0002-operator-browser-session.md).
+JSON equivalents for tooling: `GET /v1/operator/overview`, `GET /v1/operator/clients/{id}/dashboard`,
+`GET /v1/operator/clients/{id}/reports/monthly?period=YYYY-MM` (bearer token; 422 `INVALID_PERIOD` on a bad or future month).
+
+Local demo: `npm run demo` starts an in-memory instance loaded with three fictional SMEs and prints a throwaway
+operator token. `npm run demo:seed` does the same against `AEGIS_DATABASE_URL` and is refused without
+`AEGIS_ALLOW_DEMO_SEED=1` or when a non-demo client exists. `npm run report:close-month -- --period 2026-10`
+freezes each client's score for that month (idempotent).
+
+### Health score
+
+`100 - sum of capped penalties`, floored at 0, computed by a pure function (`src/domain/health.ts`) from declarative
+rules (`src/domain/health-rules.ts`). Bands: healthy from 80, watch from 50, critical below. Default ruleset
+`2026.11-default`:
+
+| Rule | Points per item | Cap |
+| --- | --- | --- |
+| `backup.stale` (no successful backup within 48 h, or never; machines needing none excluded) | 8 | 20 |
+| `assets.offline` (not seen within 30 min) | 5 | 15 |
+| `antivirus.unhealthy` (antivirus or firewall not ok, once per machine) | 10 | 25 |
+| `updates.pending` (critical updates only) | 4 | 15 |
+| `network.down` (box, VPN or internet link down; unknown is not down) | 10 | 20 |
+| `alerts.recent` (high or critical alerts in the last 24 h) | 2 | 10 |
+
+Each penalty carries a readable label, detail and the affected machines, so the UI answers "why this number".
+`AEGIS_HEALTH_RULES_PATH` points to a JSON file that replaces the defaults; an invalid file stops startup with an
+actionable message. A closed month stores a snapshot with its `rulesetVersion`, so a later rule change never
+rewrites history.
+
 ## Durable storage
 
 `AEGIS_DATABASE_URL` (for example `postgres://aegis:***@db:5432/aegis`) selects PostgreSQL; without it the

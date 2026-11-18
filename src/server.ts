@@ -1,10 +1,12 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { CockpitReadService } from "./application/cockpit-service.js";
 import type { IngestionService } from "./application/ingestion-service.js";
+import type { OperatorSessions } from "./application/operator-sessions.js";
 import { systemClock, type Clock, type TenancyService } from "./application/tenancy-service.js";
 import type { OperatorAuthenticator } from "./domain/operator.js";
 import { DomainError, type Principal } from "./domain/tenancy.js";
 import { DEFAULT_MAX_BODY, readJson, readObject, sendJson } from "./http/body.js";
+import { routeCockpitWeb } from "./http/cockpit-web-routes.js";
 import { ERROR_STATUS } from "./http/errors.js";
 import { requireOperator } from "./http/operator-auth.js";
 import { matchOperatorCockpit, routeOperatorCockpit, UUID } from "./http/operator-cockpit-routes.js";
@@ -22,6 +24,8 @@ export interface ServiceDependencies {
   operators?: OperatorAuthenticator;
   /** Read models for the cockpit; without them the cockpit API and pages are not served. */
   cockpit?: CockpitReadService;
+  /** Browser sessions for the cockpit pages; the pages need both `cockpit` and `sessions`. */
+  sessions?: OperatorSessions;
   clock?: Clock;
   /** Maximum accepted request body, in bytes. Defaults to 1 MiB. */
   maxBodyBytes?: number;
@@ -57,6 +61,12 @@ async function route(
 
   if (request.method === "GET" && url.pathname === "/health") {
     sendJson(response, 200, { status: "ok", service: info.name, version: info.version });
+    return;
+  }
+
+  if (deps?.cockpit && deps.sessions && (url.pathname === "/cockpit" || url.pathname.startsWith("/cockpit/"))) {
+    await routeCockpitWeb({ ...deps, cockpit: deps.cockpit, sessions: deps.sessions, clock: deps.clock ?? systemClock },
+      request, response, url);
     return;
   }
 
