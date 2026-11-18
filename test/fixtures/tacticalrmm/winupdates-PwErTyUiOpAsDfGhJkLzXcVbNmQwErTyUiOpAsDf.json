@@ -1,0 +1,7 @@
+[
+  { "kb": "KB5046616", "title": "2026-11 Cumulative Update for Microsoft server operating system", "severity": "Critical", "installed": false, "action": "approve", "date_installed": null },
+  { "kb": "KB5045936", "title": "2026-10 Security Update", "severity": "Important", "installed": false, "action": "nothing", "date_installed": null },
+  { "kb": "KB890830", "title": "Windows Malicious Software Removal Tool", "severity": null, "installed": false, "action": "ignore", "date_installed": null },
+  { "kb": "KB5044281", "title": "2026-10 Cumulative Update", "severity": "Critical", "installed": true, "action": "approve", "date_installed": "2026-10-20T03:00:00Z" },
+  { "kb": "KB5043050", "title": "Critical driver update", "severity": "Critical", "installed": false, "action": "ignore", "date_installed": null }
+]

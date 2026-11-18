@@ -94,6 +94,27 @@ overview, a client view and its monthly report. Nothing is persisted and no real
 `AEGIS_OPERATOR_TOKEN_SHA256` beforehand to use your own token (`npm run operator:token`). The session cookie is
 `Secure`, so use a browser that accepts it on `127.0.0.1`/`localhost`, or put the demo behind TLS.
 
+## Inventory sync from Tactical RMM
+
+```bash
+cp config/trmm-sync.example.json trmm-sync.json   # map TRMM client and site names to Aegis ids
+export AEGIS_DATABASE_URL=postgres://aegis:***@localhost:5432/aegis
+export AEGIS_TRMM_API_KEY=***                     # read-only key, restricted to the pilot clients
+npm run sync:inventory -- --config trmm-sync.json --dry-run   # report only
+npm run sync:inventory -- --config trmm-sync.json             # write
+```
+
+`AEGIS_TRMM_CONFIG` can replace `--config`; `--json` prints the full report. Replaying writes nothing. For a
+scheduled run on the host, for example every 15 minutes (secrets supplied by the host's environment or secret
+store, never written in the crontab):
+
+```cron
+*/15 * * * * cd /opt/aegis && AEGIS_TRMM_CONFIG=/etc/aegis/trmm-sync.json node dist/src/cli/sync-inventory.js >> /var/log/aegis/inventory.log 2>&1
+```
+
+Exit codes: `0` ok, `1` a client was refused, `2` configuration or environment, `3` Tactical RMM unreachable or
+key refused. See [ADR 0003](docs/adr/0003-inventory-pull-from-tactical-rmm.md).
+
 ## Known limitations
 
 Aegis is at the design stage. It does not yet ship a security event collection pipeline, a functioning correlator, production monitoring, an AI analyst or blockchain proof issuance. It cannot guarantee prevention or detection of all attacks and cannot prove the original truthfulness of submitted logs.

@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
 import { AdapterError, type SourceAdapterRegistry } from "../adapters/sources/contract.js";
+import { sourceRecordId } from "../domain/estate.js";
 import { validateDraft, type NormalizedEvent } from "../domain/event.js";
 import { DomainError, type CredentialScope, type Principal } from "../domain/tenancy.js";
 import type { EventStore } from "../ports/stores.js";
@@ -81,9 +81,7 @@ export class IngestionService {
  * no-op, while identical source ids from two clients never collide.
  */
 export function eventId(clientId: string, sourceType: string, sourceEventId: string): string {
-  return createHash("sha256")
-    .update(JSON.stringify([clientId, sourceType, sourceEventId]))
-    .digest("hex");
+  return sourceRecordId(clientId, sourceType, sourceEventId);
 }
 
 function requireScope(principal: Principal, scope: CredentialScope): void {

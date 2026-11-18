@@ -1,0 +1,16 @@
+[
+  {
+    "id": 3,
+    "name": "PME Alpha",
+    "sites": [
+      { "id": 5, "name": "Douala", "client": 3, "agent_count": 2 },
+      { "id": 6, "name": "Yaounde", "client": 3, "agent_count": 1 },
+      { "id": 9, "name": "Entrepot", "client": 3, "agent_count": 1 }
+    ]
+  },
+  {
+    "id": 7,
+    "name": "Cabinet Beta",
+    "sites": [{ "id": 11, "name": "Siege", "client": 7, "agent_count": 4 }]
+  }
+]

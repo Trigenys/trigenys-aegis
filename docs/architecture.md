@@ -146,3 +146,33 @@ stores are in memory and the startup log says `"persistence":"memory"`. Decision
   docker run -d --name aegis-pg-test -e POSTGRES_PASSWORD=admin -p 55432:5432 postgres:17-alpine
   AEGIS_TEST_DATABASE_URL=postgres://postgres:admin@localhost:55432/postgres npm run check
   ```
+
+## Inventory adapters
+
+Inventory adapters pull a client's machines from an external tool and reconcile them into the estate store.
+They live in `src/adapters/inventory/`; the reconciliation is `src/application/inventory-sync.ts`. Decision:
+[ADR 0003](adr/0003-inventory-pull-from-tactical-rmm.md).
+
+```text
+npm run sync:inventory -- --config trmm-sync.json
+     |  config (validated, no secret) + API key from the env variable it names
+     v
+Tactical RMM API  GET /clients/  ->  GET /agents/?client=<id>  ->  GET /winupdate/<agent_id>/
+     |  guards per client: Aegis client and sites exist, TRMM name and every agent's client_name match
+     v
+mapTrmmAgent (pure) merged with the stored asset  ->  EstateStore.upsertAsset (RLS per client)
+     v
+report: created / updated / unchanged / skipped / missing, unmapped TRMM clients
+```
+
+- The client id always comes from the configuration. A client failing a guard is refused before any write;
+  the others proceed.
+- Idempotent: ids are derived from `(client, "tacticalrmm", agent_id)` and `observedAt` is the agent's last
+  contact, so a replay reports `unchanged` and writes nothing. `--dry-run` computes the same report without
+  writing.
+- Retroactive: fields the tool does not report (antivirus, firewall, backup) are kept from the stored asset;
+  assets from other sources are never touched; vanished machines are reported as `missing`, never deleted.
+- Exit codes: `0` success (unmapped TRMM clients included), `1` at least one client refused or failed,
+  `2` configuration or environment problem, `3` TRMM unreachable or refusing the key on `/clients/`.
+- Tests: `test/trmm-inventory.test.ts` with fixtures in `test/fixtures/tacticalrmm/`, against the in-memory
+  store and PostgreSQL when `AEGIS_TEST_DATABASE_URL` is set.

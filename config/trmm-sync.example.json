@@ -1,0 +1,16 @@
+{
+  "baseUrl": "https://api.rmm.example.com",
+  "apiKeyEnv": "AEGIS_TRMM_API_KEY",
+  "fetchWindowsUpdates": true,
+  "backupRequiredKinds": ["server"],
+  "clients": [
+    {
+      "trmmClientId": 3,
+      "trmmClientName": "PME Alpha",
+      "aegisClientId": "00000000-0000-4000-8000-000000000001",
+      "sites": [
+        { "trmmSiteName": "Douala", "aegisSiteId": "00000000-0000-4000-8000-000000000011" }
+      ]
+    }
+  ]
+}

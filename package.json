@@ -15,7 +15,8 @@
     "operator:token": "npm run build --silent && node dist/src/cli/operator-token.js",
     "demo": "npm run build --silent && node dist/src/cli/demo.js",
     "demo:seed": "npm run build --silent && node dist/src/cli/seed-demo.js",
-    "report:close-month": "npm run build --silent && node dist/src/cli/close-month.js"
+    "report:close-month": "npm run build --silent && node dist/src/cli/close-month.js",
+    "sync:inventory": "npm run build --silent && node dist/src/cli/sync-inventory.js"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
