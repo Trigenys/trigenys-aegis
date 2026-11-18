@@ -1,4 +1,5 @@
 import { InMemoryEventStore, InMemoryTenancyStore } from "./adapters/persistence/memory.js";
+import { openSqlitePersistence } from "./adapters/persistence/sqlite.js";
 import { SourceAdapterRegistry, type SourceAdapter } from "./adapters/sources/contract.js";
 import { WazuhAdapter } from "./adapters/sources/wazuh.js";
 import { IngestionService } from "./application/ingestion-service.js";
@@ -26,4 +27,24 @@ export function createCockpit(options: CockpitOptions = {}) {
     clock
   );
   return { tenancy, ingestion, operators: options.operators };
+}
+
+export interface Persistence {
+  readonly kind: "memory" | "sqlite";
+  readonly tenancyStore: TenancyStore;
+  readonly eventStore: EventStore;
+  close(): void;
+}
+
+/**
+ * Selects the store adapters from configuration: a SQLite file when a path is
+ * given (durable), otherwise volatile in-memory stores (tests, local trials).
+ */
+export function openPersistence(databasePath?: string): Persistence {
+  const path = databasePath?.trim();
+  if (path) {
+    const sqlite = openSqlitePersistence(path);
+    return { kind: "sqlite", tenancyStore: sqlite.tenancyStore, eventStore: sqlite.eventStore, close: sqlite.close };
+  }
+  return { kind: "memory", tenancyStore: new InMemoryTenancyStore(), eventStore: new InMemoryEventStore(), close: () => {} };
 }

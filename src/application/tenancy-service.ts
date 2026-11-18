@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { generateToken, hashToken, isWellFormedToken } from "../domain/credentials.js";
 import {
-  CREDENTIAL_SCOPES, DomainError,
+  CREDENTIAL_SCOPES, DomainError, nameKey,
   type Client, type CredentialScope, type Principal, type Site, type StoredCredential
 } from "../domain/tenancy.js";
 import type { TenancyStore } from "../ports/stores.js";
@@ -24,10 +24,13 @@ export class TenancyService {
     private readonly clock: Clock = systemClock
   ) {}
 
-  /** Client names are unique (case-insensitive) so a retried creation cannot create a twin. */
+  /**
+   * Client names are unique (see nameKey) so a retried creation cannot create a twin.
+   * The check gives a helpful message; the store is the race-proof backstop.
+   */
   async createClient(name: string): Promise<Client> {
     const clean = requireName(name);
-    const existing = (await this.store.listClients()).find((c) => sameName(c.name, clean));
+    const existing = (await this.store.listClients()).find((c) => nameKey(c.name) === nameKey(clean));
     if (existing) throw new DomainError("CONFLICT", `client "${existing.name}" already exists (id ${existing.id})`);
     const client: Client = { id: randomUUID(), name: clean, createdAt: this.nowIso() };
     await this.store.insertClient(client);
@@ -48,7 +51,7 @@ export class TenancyService {
   async createSite(clientId: string, name: string): Promise<Site> {
     await this.getClient(clientId);
     const clean = requireName(name);
-    const existing = (await this.store.listSites(clientId)).find((s) => sameName(s.name, clean));
+    const existing = (await this.store.listSites(clientId)).find((s) => nameKey(s.name) === nameKey(clean));
     if (existing) throw new DomainError("CONFLICT", `site "${existing.name}" already exists (id ${existing.id})`);
     const site: Site = { id: randomUUID(), clientId, name: clean, createdAt: this.nowIso() };
     await this.store.insertSite(site);
@@ -118,10 +121,6 @@ export class TenancyService {
 }
 
 export type CredentialView = Omit<StoredCredential, "secretHash">;
-
-function sameName(a: string, b: string): boolean {
-  return a.localeCompare(b, undefined, { sensitivity: "base" }) === 0;
-}
 
 function requireName(name: unknown): string {
   if (typeof name !== "string") throw new DomainError("INVALID_NAME", "name must be a string");

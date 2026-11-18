@@ -48,3 +48,12 @@ export class DomainError extends Error {
     this.name = "DomainError";
   }
 }
+
+/**
+ * Comparison key for human names: case-, accent- and spacing-insensitive, so
+ * "Garage Martin", " garage  martin " and "GARAGE MARTÍN" collide. Stores
+ * enforce uniqueness on this key.
+ */
+export function nameKey(name: string): string {
+  return name.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/\s+/g, " ").trim();
+}

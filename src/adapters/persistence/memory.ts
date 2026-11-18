@@ -1,5 +1,5 @@
 import type { NormalizedEvent } from "../../domain/event.js";
-import type { Client, Site, StoredCredential } from "../../domain/tenancy.js";
+import { DomainError, nameKey, type Client, type Site, type StoredCredential } from "../../domain/tenancy.js";
 import type { EventQuery, EventStore, TenancyStore } from "../../ports/stores.js";
 
 /**
@@ -14,6 +14,10 @@ export class InMemoryTenancyStore implements TenancyStore {
 
   async insertClient(client: Client): Promise<void> {
     if (this.clients.has(client.id)) throw new Error(`client ${client.id} already exists`);
+    const key = nameKey(client.name);
+    if ([...this.clients.values()].some((c) => nameKey(c.name) === key)) {
+      throw new DomainError("CONFLICT", "a client with this name already exists");
+    }
     this.clients.set(client.id, client);
     this.sites.set(client.id, new Map());
   }
@@ -34,6 +38,10 @@ export class InMemoryTenancyStore implements TenancyStore {
     const partition = this.sites.get(site.clientId);
     if (!partition) throw new Error(`client ${site.clientId} does not exist`);
     if (partition.has(site.id)) throw new Error(`site ${site.id} already exists`);
+    const key = nameKey(site.name);
+    if ([...partition.values()].some((s) => nameKey(s.name) === key)) {
+      throw new DomainError("CONFLICT", "a site with this name already exists for this client");
+    }
     partition.set(site.id, site);
   }
 
@@ -47,6 +55,10 @@ export class InMemoryTenancyStore implements TenancyStore {
 
   async insertCredential(credential: StoredCredential): Promise<void> {
     if (this.credentialsByHash.has(credential.secretHash)) throw new Error("credential hash collision");
+    if (!this.clients.has(credential.clientId)) throw new Error(`client ${credential.clientId} does not exist`);
+    if (credential.siteId !== null && !(await this.getSite(credential.clientId, credential.siteId))) {
+      throw new Error("credential site must belong to the same client");
+    }
     this.credentialsByHash.set(credential.secretHash, credential);
   }
 
@@ -86,7 +98,13 @@ export class InMemoryEventStore implements EventStore {
 
   async list(clientId: string, query: EventQuery): Promise<NormalizedEvent[]> {
     const events = [...(this.partitions.get(clientId)?.values() ?? [])];
-    events.sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+    events.sort(compareEvents);
     return events.slice(0, query.limit);
   }
+}
+
+/** Shared ordering contract: most recent first, ties broken by id for stable pages. */
+export function compareEvents(a: NormalizedEvent, b: NormalizedEvent): number {
+  if (a.receivedAt !== b.receivedAt) return a.receivedAt < b.receivedAt ? 1 : -1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }

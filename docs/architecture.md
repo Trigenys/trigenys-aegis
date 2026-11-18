@@ -49,7 +49,8 @@ another client's event answers 404)
 - `src/domain`: client/site/credential model, normalized event schema `1.0`.
 - `src/ports`: `TenancyStore`, `EventStore`; no unscoped query exists.
 - `src/adapters/sources`: `SourceAdapter` contract, registry, `WazuhAdapter` (rule level 0-3 info, 4-6 low, 7-11 medium, 12-14 high, 15 critical; `full_log` and `data` dropped).
-- `src/adapters/persistence/memory.ts`: volatile in-memory stores until a durable adapter is chosen.
+- `src/adapters/persistence/memory.ts`: volatile in-memory stores (tests, local trials).
+- `src/adapters/persistence/sqlite.ts`: durable stores on Node's built-in SQLite (see Durable storage).
 - A client's identity is never read from the payload; tokens are 256-bit random values stored as SHA-256 hashes only.
 
 ### Operator API
@@ -68,4 +69,24 @@ Client credentials are rejected there, and operator tokens are rejected on clien
 Configuration: `npm run operator:token` prints a new token and its SHA-256; only the hash goes in
 `AEGIS_OPERATOR_TOKEN_SHA256` (comma-separated for several operators). Without it, the operator API answers 503.
 
-Not yet covered: durable persistence, operator audit log, per-operator identity and roles, rate limiting, timestamp windows.
+Not yet covered: operator audit log, per-operator identity and roles, rate limiting, timestamp windows.
+
+## Durable storage
+
+`AEGIS_DATABASE_PATH` points to a SQLite file (for example `/var/lib/aegis/aegis.db`); without it the
+stores are in memory and the startup log says `"persistence":"memory"`.
+
+- Engine: `node:sqlite`, built into Node 24, so no runtime dependency and no database server. Chosen over
+  PostgreSQL (`pg`) for the pilot: one file fits a few clients on a small VPS. A PostgreSQL adapter can
+  later implement the same ports (`src/ports/stores.ts`) without touching the core.
+- Schema: append-only migrations tracked with `PRAGMA user_version`; reopening an up-to-date file is a
+  no-op, an older file is upgraded in a transaction, a file from a newer build is refused at startup.
+- Isolation in the schema itself: every query is scoped by `client_id`, events are keyed by
+  `(client_id, id)`, and a composite foreign key refuses a credential bound to another client's site.
+- Idempotence: client and site names are unique on a normalized key (case, accents, spacing), events are
+  inserted with `ON CONFLICT DO NOTHING`, revocation keeps the first timestamp.
+- Only token hashes are stored. Protect the file and its `-wal`/`-shm` siblings like a secret store
+  (owner-only permissions, encrypted backups); `sqlite3 aegis.db ".backup copy.db"` gives a consistent
+  online copy.
+- Contract: `test/store-contract.test.ts` runs the same suite against every adapter, plus restart and
+  schema-version tests for SQLite.
