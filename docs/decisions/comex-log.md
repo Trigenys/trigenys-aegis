@@ -40,3 +40,18 @@ Journal en ajout seulement. Une décision révisée fait l'objet d'une nouvelle 
 4. Mettre à jour le README et l'architecture d'Aegis pour le nouveau périmètre, dans une PR dédiée.
 
 **Critère de révision** : 2027-02-18. Arrêt ou réorientation si moins de 2 PME paient, ou si le temps de support dépasse le budget prévu par poste.
+
+## 2026-11-18 — Marché du pilote d'informatique gérée
+
+**Référence** : complète l'entrée « Offre d'informatique gérée pour PME et cockpit unifié dans Aegis » du 2026-11-18, qui ne fixait pas le marché.
+
+**Décision** : choix de la zone géographique du pilote proposé à 3 PME.
+
+**Choix du fondateur** : Douala et Yaoundé (Cameroun).
+
+**Conséquences**
+- Prospection limitée aux PME ayant 1 ou 2 sites dans l'une de ces deux villes, joignables sur site en moins d'une heure, en cohérence avec l'absence d'astreinte la nuit et le week-end.
+- Prix par poste et par mois exprimé en FCFA, fixé par l'offre en cours de rédaction.
+- Kit de prospection aligné sur ce marché : `docs/sales/`.
+
+**Critère de révision** : inchangé, 2027-02-18.
